@@ -7,10 +7,12 @@ from imageio import imread
 
 # Load the image and plot the keypoints
 im = imread('../img/uiuc.png') / 255.0
-keypoints_im = np.array([(604.593078169188, 583.1361439828671),
-                         (1715.3135416380655, 776.304920238324),
-                         (1087.5150188078305, 1051.9034760165837),
-                         (79.20731171576836, 642.2524505093215)])
+keypoints_im = np.array([
+    [604.593078169188, 583.1361439828671],
+    [1715.3135416380655, 776.304920238324],
+    [1087.5150188078305, 1051.9034760165837],
+    [79.20731171576836, 642.2524505093215]
+])
 
 print(keypoints_im)
 plt.clf()
@@ -19,8 +21,7 @@ plt.scatter(keypoints_im[:, 0], keypoints_im[:, 1])
 plt.plot(keypoints_im[[0, 1, 2, 3, 0], 0], keypoints_im[[0, 1, 2, 3, 0], 1], 'g')
 
 for ind, corner in enumerate(keypoints_im):
-    plt.text(corner[0] + 30.0, corner[1] + 30.0, '#' + str(ind),
-             c='b', family='sans-serif', size='x-large')
+    plt.text(corner[0] + 30.0, corner[1] + 30.0, '#' + str(ind), c='b', family='sans-serif', size='x-large')
 plt.title("Target Image and Keypoints")
 plt.show()
 
@@ -57,7 +58,7 @@ Hints:
 '''
 
 
-def findHomography(pts_src, pts_dst):
+def find_homography(pts_src, pts_dst):
     # --------------------------- Begin your code here ---------------------------------------------
     n, *_ = pts_src.shape
     pts_src = np.hstack([pts_src, np.ones((n, 1))])
@@ -78,7 +79,7 @@ def findHomography(pts_src, pts_dst):
 # --------------------------- End your code here   ---------------------------------------------
 
 # Calculate the homography matrix using your implementation
-H_court_target = findHomography(corners_court, keypoints_im)
+H_court_target = find_homography(corners_court, keypoints_im)
 
 '''
 Question 3.a: insert the logo virtually onto the state farm center image.
@@ -122,7 +123,7 @@ pts_logo = np.array([
     [h_logo, 0]
 ])
 
-H_logo_court = findHomography(pts_logo, corners_logo)
+H_logo_court = find_homography(pts_logo, corners_logo)
 
 coordinate_conversion = np.array([
     [-1, 0, 4 * h_logo],
@@ -151,7 +152,7 @@ Hints:
 '''
 
 
-def warpImage(image, h, shape):
+def warp_image(image, h, shape):
     # --------------------------- Begin your code here ---------------------------------------------
     h_src, w_src, _ = image.shape
     xs, ys = np.meshgrid(np.arange(0, w_src), np.arange(0, h_src), indexing="xy")
@@ -172,7 +173,7 @@ def warpImage(image, h, shape):
 # --------------------------- End your code here   ---------------------------------------------
 
 # call the warpImage function
-logo_warp = warpImage(logo, target_transform, (im.shape[1], im.shape[0]))
+logo_warp = warp_image(logo, target_transform, (im.shape[1], im.shape[0]))
 
 plt.clf()
 plt.imshow(logo_warp)

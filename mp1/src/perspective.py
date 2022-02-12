@@ -1,8 +1,11 @@
-import cv2
 import numpy as np
+import open3d as o3d
 from imageio import imread
 import matplotlib.pyplot as plt
-import open3d as o3d
+from matplotlib import rcParams
+
+rcParams["savefig.dpi"] = 600
+np.set_printoptions(suppress=True)
 
 # Load the image and plot the keypoints
 im = imread('../img/uiuc.png') / 255.0
@@ -99,6 +102,7 @@ xyz = np.concatenate([corners_3d, np.ones((len(corners_3d), 1))], axis=1)
 
 # Find the projection matrix from correspondences
 P = find_projection(xyz, uv)
+print(P)
 
 # Recalculate the projected point location
 uv_project = P.dot(xyz.T).T

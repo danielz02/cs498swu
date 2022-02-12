@@ -1,6 +1,10 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from imageio import imread
+from matplotlib import rcParams
+import matplotlib.pyplot as plt
+
+rcParams["savefig.dpi"] = 600
+np.set_printoptions(suppress=True)
 
 # You could pip install the following dependencies if any is missing
 # pip install -r requirements.txt
@@ -14,7 +18,6 @@ keypoints_im = np.array([
     [79.20731171576836, 642.2524505093215]
 ])
 
-print(keypoints_im)
 plt.clf()
 plt.imshow(im)
 plt.scatter(keypoints_im[:, 0], keypoints_im[:, 1])
@@ -160,7 +163,6 @@ def warp_image(image, h, shape):
     coords_target = h @ coords_src.reshape(3, -1)
     coords_target /= coords_target[-1]
     coords_target = coords_target[:-1].astype(int)
-    print(coords_target)
 
     # coords_target = np.ravel_multi_index(coords_target, dims=shape[:2])
 

@@ -32,7 +32,12 @@ Output:
 '''
 # --------------------------- Begin your code here ---------------------------------------------
 
-corners_court = []
+corners_court = np.array([
+    [0, 15.24],
+    [28.65, 15.24],
+    [28.65, 0],
+    [0, 0]
+])
 
 # --------------------------- End your code here   ---------------------------------------------
 
@@ -47,19 +52,33 @@ Returns:
 Hints:
     - you might find the function vstack, hstack to be handy for getting homogenous coordinate;
     - you might find numpy.linalg.svd to be useful for solving linear system
-    - directly calling findHomography in cv2 will receive zero point, but you could use it as sanity-check of your own implementation
+    - directly calling findHomography in cv2 will receive zero point, but you could use it as sanity-check of your
+    own implementation
 '''
 
 
-def find_homography(pts_src, pts_dst):
+def findHomography(pts_src, pts_dst):
     # --------------------------- Begin your code here ---------------------------------------------
-    pass
+    n, *_ = pts_src.shape
+    pts_src = np.hstack([pts_src, np.ones((n, 1))])
+    pts_dst = np.hstack([pts_dst, np.ones((n, 1))])
+
+    a = np.zeros((2 * n, 9))
+    a[0::2, 3:6] = pts_src
+    a[1::2, 0:3] = pts_src
+    a[0::2, 6:9] = -pts_src * pts_dst[:, 1].reshape(-1, 1)
+    a[1::2, 6:9] = -pts_src * pts_dst[:, 0].reshape(-1, 1)
+    *_, vh = np.linalg.svd(a)
+    h = vh[-1]
+    h /= h[-1]
+
+    return h.reshape(3, 3)
 
 
 # --------------------------- End your code here   ---------------------------------------------
 
 # Calculate the homography matrix using your implementation
-H = find_homography(corners_court, keypoints_im)
+H_court_target = findHomography(corners_court, keypoints_im)
 
 '''
 Question 3.a: insert the logo virtually onto the state farm center image.
@@ -71,10 +90,12 @@ Returns:
 
 Hints:
      - Consider to calculate the transform as the composition of the two: H_logo_target = H_court_target @ H_logo_court
-     - Given the banner size in meters and image size in pixels, could you scale the logo image coordinate from pixels to meters
+     - Given the banner size in meters and image size in pixels, could you scale the logo image coordinate from pixels
+     to meters
      - What transform will move the logo to the target location?
      - Could you leverage the homography between basketball court to target image we computed in Q.2?
-     - Image coordinate is y down ((0, 0) at bottom-left corner) while we expect the inserted logo to be y up, how would you handle this?
+     - Image coordinate is y down ((0, 0) at bottom-left corner) while we expect the inserted logo to be y up, how would
+     you handle this?
 '''
 
 # Read the banner image that we want to insert to the basketball court
@@ -86,14 +107,37 @@ plt.show()
 
 # --------------------------- Begin your code here ---------------------------------------------
 
-target_transform = []
+corners_logo = np.array([
+    [23, 2 + 3],
+    [23 + 6, 2 + 3],
+    [23 + 6, 2],
+    [23, 2]
+])
+
+h_logo, w_logo, _ = logo.shape
+pts_logo = np.array([
+    [0, 0],
+    [0, w_logo],
+    [h_logo, w_logo],
+    [h_logo, 0]
+])
+
+H_logo_court = findHomography(pts_logo, corners_logo)
+
+coordinate_conversion = np.array([
+    [-1, 0, 4 * h_logo],
+    [0, 1, 0],
+    [0, 0, 1]
+])
+
+target_transform = coordinate_conversion @ H_court_target @ H_logo_court
 
 # --------------------------- End your code here   ---------------------------------------------
 
 '''
-Question 3.b: compute the warpImage function
+Question 3.b: compute the warp_image function
 Arguments:
-     image - the source image you may want to warp (Hs x Ws x 4 matrix, R,G,B,alpha)
+     image - the source image you may want to warp (Hs x Ws x 4 matrix, R, G, B, alpha)
      H - the homography transform from the source to the target image coordinate (3x3 matrix)
      shape - a tuple of the target image shape (Wt, Ht)
 Returns:
@@ -102,19 +146,33 @@ Returns:
 Hints:
     - you might find the function numpy.meshgrid and numpy.ravel_multi_index useful;
     - are you able to get rid of any for-loop over all pixels?
-    - directly calling warpAffine or warpPerspective in cv2 will receive zero point, but you could use as sanity-check of your own implementation
+    - directly calling warpAffine or warpPerspective in cv2 will receive zero point, but you could use as sanity-check
+    of your own implementation
 '''
 
 
-def warp_image(image, H, shape):
+def warpImage(image, h, shape):
     # --------------------------- Begin your code here ---------------------------------------------
-    pass
+    h_src, w_src, _ = image.shape
+    xs, ys = np.meshgrid(np.arange(0, w_src), np.arange(0, h_src), indexing="xy")
+    coords_src = np.stack([xs, ys, np.ones_like(xs)], axis=0)
+    coords_target = h @ coords_src.reshape(3, -1)
+    coords_target /= coords_target[-1]
+    coords_target = coords_target[:-1].astype(int)
+    print(coords_target)
+
+    # coords_target = np.ravel_multi_index(coords_target, dims=shape[:2])
+
+    image_warp = np.zeros((*shape, 4))
+    image_warp[coords_target[0], coords_target[1], :] = image.reshape(-1, 4)
+
+    return image_warp.transpose((1, 0, 2))  # cv2.warpPerspective(image, h, shape)
 
 
 # --------------------------- End your code here   ---------------------------------------------
 
 # call the warpImage function
-logo_warp = warp_image(logo, target_transform, (im.shape[1], im.shape[0]))
+logo_warp = warpImage(logo, target_transform, (im.shape[1], im.shape[0]))
 
 plt.clf()
 plt.imshow(logo_warp)
@@ -132,7 +190,8 @@ Hints:
 
 # --------------------------- Begin your code here ---------------------------------------------
 
-im = []
+alpha_logo = 0.35
+im = alpha_logo * logo_warp + im * (1 - alpha_logo)
 
 # --------------------------- End your code here   ---------------------------------------------
 
@@ -143,4 +202,4 @@ plt.show()
 
 # dump the results for autograde
 outfile = 'solution_homography.npz'
-np.savez(outfile, corners_court, H, target_transform, logo_warp, im)
+np.savez(outfile, corners_court, H_court_target, target_transform, logo_warp, im)

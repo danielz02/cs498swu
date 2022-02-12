@@ -6,7 +6,7 @@ from imageio import imread
 # pip install -r requirements.txt
 
 # Load the image and plot the keypoints
-im = imread('uiuc.png') / 255.0
+im = imread('../img/uiuc.png') / 255.0
 keypoints_im = np.array([(604.593078169188, 583.1361439828671),
                          (1715.3135416380655, 776.304920238324),
                          (1087.5150188078305, 1051.9034760165837),
@@ -99,7 +99,7 @@ Hints:
 '''
 
 # Read the banner image that we want to insert to the basketball court
-logo = imread('logo.png') / 255.0
+logo = imread('../img/logo.png') / 255.0
 plt.clf()
 plt.imshow(logo)
 plt.title("Banner")
@@ -166,7 +166,7 @@ def warpImage(image, h, shape):
     image_warp = np.zeros((*shape, 4))
     image_warp[coords_target[0], coords_target[1], :] = image.reshape(-1, 4)
 
-    return image_warp.transpose((1, 0, 2))  # cv2.warpPerspective(image, h, shape)
+    return image_warp.transpose((1, 0, 2))
 
 
 # --------------------------- End your code here   ---------------------------------------------
@@ -201,5 +201,5 @@ plt.title("Blended Image")
 plt.show()
 
 # dump the results for autograde
-outfile = 'solution_homography.npz'
+outfile = '../img/solution_homography.npz'
 np.savez(outfile, corners_court, H_court_target, target_transform, logo_warp, im)

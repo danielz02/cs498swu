@@ -25,7 +25,7 @@ This link also gives a thorough review of epipolar geometry:
 """
 
 import os
-import cv2 # our tested version is 4.5.5
+import cv2  # our tested version is 4.5.5
 import open3d as o3d
 import numpy as np
 from matplotlib import pyplot as plt
@@ -33,31 +33,29 @@ from math import sqrt
 import random
 from pathlib import Path
 
-basedir= Path('../assets/fountain')
+basedir = Path('../assets/fountain')
 img1 = cv2.imread(str(basedir / 'images/0000.png'), 0)
-img2 = cv2.imread(str(basedir /'images/0005.png'), 0)
+img2 = cv2.imread(str(basedir / 'images/0005.png'), 0)
 
 f, axarr = plt.subplots(2, 1)
 axarr[0].imshow(img1, cmap='gray')
 axarr[1].imshow(img2, cmap='gray')
 plt.show()
 
+
 # --------------------- Question 2
 
 def calculate_geometric_distance(all_matches, F):
     """
-    Calculate average geomtric distance from each projected keypoint from one image to its corresponding epipolar line in another image.
-    Note that you should take the average of the geometric distance in two direction (image 1 to 2, and image 2 to 1)
-    Arguments:
-        all_matches: all matched keypoint pairs that loaded from disk (#all_matches, 4).
-        F: estimated fundamental matrix, (3, 3)
-    Returns:
-        average geomtric distance.
+    Calculate average geomtric distance from each projected keypoint from one image to its corresponding epi-polar
+    line in another image. Note that you should take the average of the geometric distance in two direction (image 1
+    to 2, and image 2 to 1) Arguments: all_matches: all matched keypoint pairs that loaded from disk (#all_matches,
+    4). F: estimated fundamental matrix, (3, 3) Returns: average geometric distance.
     """
     ones = np.ones((all_matches.shape[0], 1))
     all_p1 = np.concatenate((all_matches[:, 0:2], ones), axis=1)
     all_p2 = np.concatenate((all_matches[:, 2:4], ones), axis=1)
-    # Epipolar lines.
+    # Epi-polar lines.
     F_p1 = np.dot(F, all_p1.T).T  # F*p1, dims [#points, 3].
     F_p2 = np.dot(F.T, all_p2.T).T  # (F^T)*p2, dims [#points, 3].
     # Geometric distances.
@@ -70,14 +68,16 @@ def calculate_geometric_distance(all_matches, F):
     dist1 = d1.sum() / all_matches.shape[0]
     dist2 = d2.sum() / all_matches.shape[0]
 
-    dist = (dist1 + dist2)/2
+    dist = (dist1 + dist2) / 2
     return dist
+
 
 # Coords of matched keypoint pairs in image 1 and 2, dims (#matches, 4). Same pair of images as before
 # For each row, it consists (k1_x, k1_y, k2_x, k2_y).
 # If necessary, you can convert float to int to get the integer coordinate
 eight_good_matches = np.load('../assets/eight_good_matches.npy')
 all_good_matches = np.load('../assets/all_good_matches.npy')
+
 
 def estimate_fundamental_matrix(matches, normalize=False):
     """
@@ -90,16 +90,18 @@ def estimate_fundamental_matrix(matches, normalize=False):
     F = np.eye(3)
     # --------------------------- Begin your code here ---------------------------------------------
 
-
     # --------------------------- End your code here   ---------------------------------------------
     return F
+
 
 F_with_normalization = estimate_fundamental_matrix(eight_good_matches, normalize=True)
 F_without_normalization = estimate_fundamental_matrix(eight_good_matches, normalize=False)
 
 # Evaluation (these numbers should be quite small)
-print(f"F_with_normalization average geo distance: {calculate_geometric_distance(all_good_matches, F_with_normalization)}")
-print(f"F_without_normalization average geo distance: {calculate_geometric_distance(all_good_matches, F_without_normalization)}")
+print(
+    f"F_with_normalization average geo distance: {calculate_geometric_distance(all_good_matches, F_with_normalization)}")
+print(
+    f"F_without_normalization average geo distance: {calculate_geometric_distance(all_good_matches, F_without_normalization)}")
 
 
 # --------------------- Question 3
@@ -124,46 +126,49 @@ def ransac(all_matches, num_iteration, estimate_fundamental_matrix, inlier_thres
     ite = 0
     # --------------------------- Begin your code here ---------------------------------------------
 
-    #while ite < num_iteration:
+    # while ite < num_iteration:
 
-        # random sample correspondences
+    # random sample correspondences
 
-        # estimate the minimal fundamental estimation problem
+    # estimate the minimal fundamental estimation problem
 
-        # compute # of inliers
+    # compute # of inliers
 
-        # update the current best solution
-
+    # update the current best solution
 
     # --------------------------- End your code here   ---------------------------------------------
     return best_F, inlier_matches_with_best_F, avg_geo_dis_with_best_F
 
+
 def visualize_inliers(im1, im2, inlier_coords):
     for i, im in enumerate([im1, im2]):
-        plt.subplot(1, 2, i+1)
+        plt.subplot(1, 2, i + 1)
         plt.imshow(im, cmap='gray')
-        plt.scatter(inlier_coords[:, 2*i], inlier_coords[:, 2*i+1], marker="x", color="red", s=10)
+        plt.scatter(inlier_coords[:, 2 * i], inlier_coords[:, 2 * i + 1], marker="x", color="red", s=10)
     plt.show()
 
+
 num_iterations = [1, 100, 10000]
-inlier_threshold = None # TODO: change the inlier threshold by yourself
+inlier_threshold = None  # TODO: change the inlier threshold by yourself
 for num_iteration in num_iterations:
-    best_F, inlier_matches_with_best_F, avg_geo_dis_with_best_F = ransac(all_good_matches, num_iteration, estimate_fundamental_matrix, inlier_threshold)
+    best_F, inlier_matches_with_best_F, avg_geo_dis_with_best_F = ransac(all_good_matches, num_iteration,
+                                                                         estimate_fundamental_matrix, inlier_threshold)
     if inlier_matches_with_best_F is not None:
         print(f"num_iterations: {num_iteration}; avg_geo_dis_with_best_F: {avg_geo_dis_with_best_F};")
         visualize_inliers(img1, img2, inlier_matches_with_best_F)
+
 
 # --------------------- Question 4
 
 def visualize(estimated_F, img1, img2, kp1, kp2):
     # --------------------------- Begin your code here ---------------------------------------------
 
-
     # --------------------------- End your code here   ---------------------------------------------
     pass
 
+
 all_good_matches = np.load('../assets/all_good_matches.npy')
-F_Q2 = None # link to your estimated F in Q3
-F_Q3 = None # link to your estimated F in Q3
+F_Q2 = None  # link to your estimated F in Q3
+F_Q3 = None  # link to your estimated F in Q3
 visualize(F_Q2, img1, img2, all_good_matches[:, :2], all_good_matches[:, 2:])
 visualize(F_Q3, img1, img2, all_good_matches[:, :2], all_good_matches[:, 2:])

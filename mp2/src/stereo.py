@@ -3,7 +3,7 @@ import open3d as o3d
 import matplotlib.pyplot as plt
 import cv2
 
-# read intrinsics, extrinsincs and camera images
+# read intrinsics, extrinsics and camera images
 K1 = np.load('../assets/fountain/Ks/0005.npy')
 K2 = np.load('../assets/fountain/Ks/0004.npy')
 R1 = np.load('../assets/fountain/Rs/0005.npy')

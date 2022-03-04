@@ -1,12 +1,12 @@
-'''
+"""
 Question 5. Triangulation
 In this question we move to 3D.
 You are given keypoint matching between two images, together with the camera intrinsic and extrinsic matrix.
 Your task is to perform triangulation to restore the 3D coordinates of the key points.
 In your PDF, please visualize the 3d points and camera poses in 3D from three different viewing perspectives.
-'''
+"""
 import os
-import cv2 # our tested version is 4.5.5
+import cv2  # our tested version is 4.5.5
 import open3d as o3d
 import numpy as np
 from matplotlib import pyplot as plt
@@ -27,6 +27,7 @@ R2 = np.load('../assets/fountain/Rs/0005.npy')
 t1 = np.load('../assets/fountain/ts/0000.npy')
 t2 = np.load('../assets/fountain/ts/0005.npy')
 
+
 def triangulate(K1, K2, R1, R2, t1, t2, all_good_matches):
     """
     Arguments:
@@ -43,7 +44,6 @@ def triangulate(K1, K2, R1, R2, t1, t2, all_good_matches):
     points_3d = None
     # --------------------------- Begin your code here ---------------------------------------------
 
-
     # --------------------------- End your code here   ---------------------------------------------
     return points_3d
 
@@ -53,11 +53,11 @@ if points_3d is not None:
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points_3d)
 
-    # Visualize both point and camera
-    # Check this link for Open3D visualizer http://www.open3d.org/docs/release/tutorial/visualization/visualization.html#Function-draw_geometries
-    # Check this function for adding a virtual camera in the visualizer http://www.open3d.org/docs/release/tutorial/visualization/visualization.html#Function-draw_geometries
-    # Open3D is not the only option. You could use matplotlib, vtk or other visualization tools as well.
+    # Visualize both point and camera Check this link for Open3D visualizer
+    # http://www.open3d.org/docs/release/tutorial/visualization/visualization.html#Function-draw_geometries Check
+    # this function for adding a virtual camera in the visualizer
+    # http://www.open3d.org/docs/release/tutorial/visualization/visualization.html#Function-draw_geometries Open3D is
+    # not the only option. You could use matplotlib, vtk or other visualization tools as well.
     # --------------------------- Begin your code here ---------------------------------------------
-
 
     # --------------------------- End your code here   ---------------------------------------------

@@ -1,4 +1,4 @@
-'''
+"""
 Questions 2-4. Fundamental matrix estimation
 
 Question 2. Eight-point Estimation
@@ -22,7 +22,7 @@ Check our Lecture 4, Epipolar Geometry, to learn more about equation of epipolar
 Our Lecture 4 and 5 cover most of the concepts here.
 This link also gives a thorough review of epipolar geometry:
     https://web.stanford.edu/class/cs231a/course_notes/03-epipolar-geometry.pdf
-'''
+"""
 
 import os
 import cv2 # our tested version is 4.5.5

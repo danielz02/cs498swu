@@ -1,21 +1,23 @@
 """
 Questions 2-4. Fundamental matrix estimation
 
-Question 2. Eight-point Estimation
-For this question, your task is to implement normalized and unnormalized eight-point algorithms to find out the fundamental matrix between two cameras.
-We've provided a method to compute the average geometric distance, which is the distance between each projected keypoint from one image to its corresponding epipolar line in the other image.
-You might consider reading that code below as a reminder for how we can use the fundamental matrix.
-For more information on the normalized eight-point algorithm, please see this link: https://en.wikipedia.org/wiki/Eight-point_algorithm#Normalized_algorithm
+Question 2. Eight-point Estimation For this question, your task is to implement normalized and unnormalized
+eight-point algorithms to find out the fundamental matrix between two cameras. We've provided a method to compute the
+average geometric distance, which is the distance between each projected keypoint from one image to its corresponding
+epipolar line in the other image. You might consider reading that code below as a reminder for how we can use the
+fundamental matrix. For more information on the normalized eight-point algorithm, please see this link:
+https://en.wikipedia.org/wiki/Eight-point_algorithm#Normalized_algorithm
 
-Question 3. RANSAC
-Your task is to implement RANSAC to find out the fundamental matrix between two cameras if the correspondences are noisy.
+Question 3. RANSAC Your task is to implement RANSAC to find out the fundamental matrix between two cameras if the
+correspondences are noisy.
 
-Please report the average geometric distance based on your estimated fundamental matrix, given 1, 100, and 10000 iterations of RANSAC.
-Please also visualize the inliers with your best estimated fundamental matrix in your solution for both images (we provide a visualization function).
-In your PDF, please also explain why we do not perform SVD or do a least-square over all the matched key points.
+Please report the average geometric distance based on your estimated fundamental matrix, given 1, 100,
+and 10000 iterations of RANSAC. Please also visualize the inliers with your best estimated fundamental matrix in your
+solution for both images (we provide a visualization function). In your PDF, please also explain why we do not
+perform SVD or do a least-square over all the matched key points.
 
-Question 4. Visualizing Epipolar Lines
-Please visualize the epipolar line for both images for your estimated F in Q2 and Q3.
+Question 4. Visualizing Epi-polar Lines
+Please visualize the epi-polar line for both images for your estimated F in Q2 and Q3.
 
 To draw it on images, cv2.line, cv2.circle are useful to plot lines and circles.
 Check our Lecture 4, Epipolar Geometry, to learn more about equation of epipolar line.
@@ -33,21 +35,12 @@ from math import sqrt
 import random
 from pathlib import Path
 
-basedir = Path('../assets/fountain')
-img1 = cv2.imread(str(basedir / 'images/0000.png'), 0)
-img2 = cv2.imread(str(basedir / 'images/0005.png'), 0)
-
-f, axarr = plt.subplots(2, 1)
-axarr[0].imshow(img1, cmap='gray')
-axarr[1].imshow(img2, cmap='gray')
-plt.show()
-
 
 # --------------------- Question 2
 
 def calculate_geometric_distance(all_matches, F):
     """
-    Calculate average geomtric distance from each projected keypoint from one image to its corresponding epi-polar
+    Calculate average geometric distance from each projected keypoint from one image to its corresponding epi-polar
     line in another image. Note that you should take the average of the geometric distance in two direction (image 1
     to 2, and image 2 to 1) Arguments: all_matches: all matched keypoint pairs that loaded from disk (#all_matches,
     4). F: estimated fundamental matrix, (3, 3) Returns: average geometric distance.
@@ -72,13 +65,6 @@ def calculate_geometric_distance(all_matches, F):
     return dist
 
 
-# Coords of matched keypoint pairs in image 1 and 2, dims (#matches, 4). Same pair of images as before
-# For each row, it consists (k1_x, k1_y, k2_x, k2_y).
-# If necessary, you can convert float to int to get the integer coordinate
-eight_good_matches = np.load('../assets/eight_good_matches.npy')
-all_good_matches = np.load('../assets/all_good_matches.npy')
-
-
 def estimate_fundamental_matrix(matches, normalize=False):
     """
     Arguments:
@@ -87,43 +73,75 @@ def estimate_fundamental_matrix(matches, normalize=False):
     Returns:
         F: Fundamental matrix, dims (3, 3).
     """
-    F = np.eye(3)
     # --------------------------- Begin your code here ---------------------------------------------
+    n = len(matches)
+    img1_matches = matches[:, :2]
+    img2_matches = matches[:, 2:]
+    trans_a, trans_b = np.eye(3), np.eye(3)
+    if normalize:
+        img1_matches_centroid = img1_matches.mean(axis=0)
+        print(img1_matches_centroid.shape, img1_matches.shape)
+        img2_matches_centroid = img2_matches.mean(axis=0)
+        img1_matches = img1_matches - img1_matches_centroid
+        img2_matches = img2_matches - img2_matches_centroid
+
+        img1_scale = np.sqrt(2 / (1 / n * np.sum(img1_matches ** 2)))
+        img2_scale = np.sqrt(2 / (1 / n * np.sum(img2_matches ** 2)))
+
+        img1_matches = img1_matches * img1_scale
+        img2_matches = img2_matches * img2_scale
+
+        trans_a = np.array([
+            [img1_scale, 0, -img1_scale * img1_matches_centroid[0]],
+            [0, img1_scale, -img1_scale * img1_matches_centroid[1]],
+            [0, 0, 1]
+        ])
+        trans_b = np.array([
+            [img2_scale, 0, -img2_scale * img2_matches_centroid[0]],
+            [0, img2_scale, -img2_scale * img2_matches_centroid[1]],
+            [0, 0, 1]
+        ])
+
+    img1_matches = np.hstack([img1_matches, np.ones(n).reshape(-1, 1)])
+    img2_matches = np.hstack([img2_matches, np.ones(n).reshape(-1, 1)])
+
+    x, x_prime = img1_matches[:, 0].reshape(-1, 1), img2_matches[:, 0].reshape(-1, 1)
+    y, y_prime = img1_matches[:, 1].reshape(-1, 1), img2_matches[:, 1].reshape(-1, 1)
+    u = np.hstack([x_prime * x, x_prime * y, x_prime, y_prime * x, y_prime * y, y_prime, x, y,
+                   (img1_matches[:, 2] * img2_matches[:, 2]).reshape(-1, 1)])
+    u, s, vh = np.linalg.svd(u)
+    f = vh[-1].reshape(3, 3)
+    u_f, s_f, vh_f = np.linalg.svd(f, compute_uv=True, full_matrices=True)
+    s_f[-1] = 0
+    f = u_f @ np.diag(s_f) @ vh_f
+
+    if normalize:
+        f = trans_b.T @ f @ trans_a
 
     # --------------------------- End your code here   ---------------------------------------------
-    return F
-
-
-F_with_normalization = estimate_fundamental_matrix(eight_good_matches, normalize=True)
-F_without_normalization = estimate_fundamental_matrix(eight_good_matches, normalize=False)
-
-# Evaluation (these numbers should be quite small)
-print(
-    f"F_with_normalization average geo distance: {calculate_geometric_distance(all_good_matches, F_with_normalization)}")
-print(
-    f"F_without_normalization average geo distance: {calculate_geometric_distance(all_good_matches, F_without_normalization)}")
+    return f
 
 
 # --------------------- Question 3
 
-def ransac(all_matches, num_iteration, estimate_fundamental_matrix, inlier_threshold):
+def ransac(all_matches, max_iterations, estimate_fundamental_matrix, inlier_threshold):
     """
     Arguments:
         all_matches: coords of matched keypoint pairs in image 1 and 2, dims (# matches, 4).
-        num_iteration: total number of RANSAC iteration
+        max_iterations: total number of RANSAC iteration
         estimate_fundamental_matrix: your eight-point algorithm function but use normalized version
         inlier_threshold: threshold to decide if one point is inlier
     Returns:
-        best_F: best Fundamental matrix, dims (3, 3).
-        inlier_matches_with_best_F: (#inliers, 4)
-        avg_geo_dis_with_best_F: float
+        best_f: the best Fundamental matrix, dims (3, 3).
+        inlier_matches_with_best_f: (#inliers, 4)
+        avg_geo_dis_with_best_f: float
     """
 
-    best_F = np.eye(3)
-    inlier_matches_with_best_F = None
-    avg_geo_dis_with_best_F = 0.0
+    best_f = np.eye(3)
+    inlier_matches_with_best_f = None
+    avg_geo_dis_with_best_f = 0.0
 
-    ite = 0
+    num_iter = 0
     # --------------------------- Begin your code here ---------------------------------------------
 
     # while ite < num_iteration:
@@ -137,7 +155,7 @@ def ransac(all_matches, num_iteration, estimate_fundamental_matrix, inlier_thres
     # update the current best solution
 
     # --------------------------- End your code here   ---------------------------------------------
-    return best_F, inlier_matches_with_best_F, avg_geo_dis_with_best_F
+    return best_f, inlier_matches_with_best_f, avg_geo_dis_with_best_f
 
 
 def visualize_inliers(im1, im2, inlier_coords):
@@ -146,16 +164,6 @@ def visualize_inliers(im1, im2, inlier_coords):
         plt.imshow(im, cmap='gray')
         plt.scatter(inlier_coords[:, 2 * i], inlier_coords[:, 2 * i + 1], marker="x", color="red", s=10)
     plt.show()
-
-
-num_iterations = [1, 100, 10000]
-inlier_threshold = None  # TODO: change the inlier threshold by yourself
-for num_iteration in num_iterations:
-    best_F, inlier_matches_with_best_F, avg_geo_dis_with_best_F = ransac(all_good_matches, num_iteration,
-                                                                         estimate_fundamental_matrix, inlier_threshold)
-    if inlier_matches_with_best_F is not None:
-        print(f"num_iterations: {num_iteration}; avg_geo_dis_with_best_F: {avg_geo_dis_with_best_F};")
-        visualize_inliers(img1, img2, inlier_matches_with_best_F)
 
 
 # --------------------- Question 4
@@ -167,8 +175,43 @@ def visualize(estimated_F, img1, img2, kp1, kp2):
     pass
 
 
-all_good_matches = np.load('../assets/all_good_matches.npy')
-F_Q2 = None  # link to your estimated F in Q3
-F_Q3 = None  # link to your estimated F in Q3
-visualize(F_Q2, img1, img2, all_good_matches[:, :2], all_good_matches[:, 2:])
-visualize(F_Q3, img1, img2, all_good_matches[:, :2], all_good_matches[:, 2:])
+if __name__ == "__main__":
+    basedir = Path('../assets/fountain')
+    img1 = cv2.imread(str(basedir / 'images/0000.png'), 0)
+    img2 = cv2.imread(str(basedir / 'images/0005.png'), 0)
+
+    fig, axarr = plt.subplots(2, 1)
+    axarr[0].imshow(img1, cmap='gray')
+    axarr[1].imshow(img2, cmap='gray')
+    plt.show()
+
+    # Coords of matched keypoint pairs in image 1 and 2, dims (#matches, 4). Same pair of images as before
+    # For each row, it consists (k1_x, k1_y, k2_x, k2_y).
+    # If necessary, you can convert float to int to get the integer coordinate
+    eight_good_matches = np.load('../assets/eight_good_matches.npy')
+    all_good_matches = np.load('../assets/all_good_matches.npy')
+
+    F_with_normalization = estimate_fundamental_matrix(eight_good_matches, normalize=True)
+    F_without_normalization = estimate_fundamental_matrix(eight_good_matches, normalize=False)
+
+    # Evaluation (these numbers should be quite small)
+    print(
+        f"F_with_normalization average geo distance: {calculate_geometric_distance(all_good_matches, F_with_normalization)}")
+    print(
+        f"F_without_normalization average geo distance: {calculate_geometric_distance(all_good_matches, F_without_normalization)}")
+
+    num_iterations = [1, 100, 10000]
+    inlier_threshold = None  # TODO: change the inlier threshold by yourself
+    for num_iteration in num_iterations:
+        best_F, inlier_matches_with_best_F, avg_geo_dis_with_best_F = ransac(all_good_matches, num_iteration,
+                                                                             estimate_fundamental_matrix,
+                                                                             inlier_threshold)
+        if inlier_matches_with_best_F is not None:
+            print(f"num_iterations: {num_iteration}; avg_geo_dis_with_best_F: {avg_geo_dis_with_best_F};")
+            visualize_inliers(img1, img2, inlier_matches_with_best_F)
+
+    all_good_matches = np.load('../assets/all_good_matches.npy')
+    F_Q2 = None  # link to your estimated F in Q3
+    F_Q3 = None  # link to your estimated F in Q3
+    visualize(F_Q2, img1, img2, all_good_matches[:, :2], all_good_matches[:, 2:])
+    visualize(F_Q3, img1, img2, all_good_matches[:, :2], all_good_matches[:, 2:])

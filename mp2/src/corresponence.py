@@ -52,11 +52,11 @@ def select_putative_matches(des1_, des2_, ratio_threshold=0.5):
     """
 
     dists = scipy.spatial.distance.cdist(des1_, des2_, "sqeuclidean")
-    dist_ranks = dists.argsort(axis=0)
-    fc = np.argwhere(dist_ranks == 0)
-    fs = np.argwhere(dist_ranks == 1)
-    dist_ratios = dists[fc[:, 0], fc[:, 1]] / dists[fs[:, 0], fs[:, 1]]
-    filtered_matches = [tuple(x) for x in fc[dist_ratios < ratio_threshold]]
+    dist_ranks = dists.argsort(axis=1)
+    fc = dist_ranks[:, 0]
+    fs = dist_ranks[:, 1]
+    dist_ratios = dists[range(len(fc)), fc] / dists[range(len(fs)), fs]
+    filtered_matches = list(zip(*np.where(dist_ratios < ratio_threshold), fc[dist_ratios < ratio_threshold]))
 
     return filtered_matches
 

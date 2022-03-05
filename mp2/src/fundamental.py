@@ -80,7 +80,6 @@ def estimate_fundamental_matrix(matches, normalize=False):
     trans_a, trans_b = np.eye(3), np.eye(3)
     if normalize:
         img1_matches_centroid = img1_matches.mean(axis=0)
-        print(img1_matches_centroid.shape, img1_matches.shape)
         img2_matches_centroid = img2_matches.mean(axis=0)
         img1_matches = img1_matches - img1_matches_centroid
         img2_matches = img2_matches - img2_matches_centroid
@@ -124,13 +123,13 @@ def estimate_fundamental_matrix(matches, normalize=False):
 
 # --------------------- Question 3
 
-def ransac(all_matches, max_iterations, estimate_fundamental_matrix, inlier_threshold):
+def ransac(all_matches, max_iterations, estimate_fundamental, threshold):
     """
     Arguments:
         all_matches: coords of matched keypoint pairs in image 1 and 2, dims (# matches, 4).
         max_iterations: total number of RANSAC iteration
-        estimate_fundamental_matrix: your eight-point algorithm function but use normalized version
-        inlier_threshold: threshold to decide if one point is inlier
+        estimate_fundamental: your eight-point algorithm function but use normalized version
+        threshold: threshold to decide if one point is inlier
     Returns:
         best_f: the best Fundamental matrix, dims (3, 3).
         inlier_matches_with_best_f: (#inliers, 4)
@@ -138,21 +137,29 @@ def ransac(all_matches, max_iterations, estimate_fundamental_matrix, inlier_thre
     """
 
     best_f = np.eye(3)
-    inlier_matches_with_best_f = None
-    avg_geo_dis_with_best_f = 0.0
+    inlier_matches_with_best_f = []
+    avg_geo_dis_with_best_f = np.inf
 
-    num_iter = 0
     # --------------------------- Begin your code here ---------------------------------------------
 
-    # while ite < num_iteration:
+    for _ in range(max_iterations):
+        # random sample correspondences
+        random_matches = all_matches[np.random.choice(range(len(all_matches)), size=8, replace=False)]
 
-    # random sample correspondences
+        # estimate the minimal fundamental estimation problem
+        f = estimate_fundamental(random_matches, normalize=True)
 
-    # estimate the minimal fundamental estimation problem
+        # compute # of inliers
+        dists = np.array([calculate_geometric_distance(match.reshape(1, -1), f) for match in random_matches])
+        inliers = random_matches[dists < threshold]
+        avg_geo_dis = dists[dists < threshold].mean()
 
-    # compute # of inliers
+        # update the current best solution
 
-    # update the current best solution
+        if avg_geo_dis < avg_geo_dis_with_best_f:
+            avg_geo_dis_with_best_f = avg_geo_dis
+            inlier_matches_with_best_f = inliers.copy()
+            best_f = f.copy()
 
     # --------------------------- End your code here   ---------------------------------------------
     return best_f, inlier_matches_with_best_f, avg_geo_dis_with_best_f
@@ -168,7 +175,7 @@ def visualize_inliers(im1, im2, inlier_coords):
 
 # --------------------- Question 4
 
-def visualize(estimated_F, img1, img2, kp1, kp2):
+def visualize(f, im1, im2, kp1, kp2):
     # --------------------------- Begin your code here ---------------------------------------------
 
     # --------------------------- End your code here   ---------------------------------------------
@@ -196,22 +203,27 @@ if __name__ == "__main__":
 
     # Evaluation (these numbers should be quite small)
     print(
-        f"F_with_normalization average geo distance: {calculate_geometric_distance(all_good_matches, F_with_normalization)}")
+        f"F_with_normalization average geo distance: "
+        f"{calculate_geometric_distance(all_good_matches, F_with_normalization)}"
+    )
     print(
-        f"F_without_normalization average geo distance: {calculate_geometric_distance(all_good_matches, F_without_normalization)}")
+        f"F_without_normalization average geo distance: "
+        f"{calculate_geometric_distance(all_good_matches, F_without_normalization)}"
+    )
 
     num_iterations = [1, 100, 10000]
-    inlier_threshold = None  # TODO: change the inlier threshold by yourself
+    inlier_matches_with_best_F = np.eye(3)
+    inlier_threshold = 0.6  # TODO: change the inlier threshold by yourself
     for num_iteration in num_iterations:
-        best_F, inlier_matches_with_best_F, avg_geo_dis_with_best_F = ransac(all_good_matches, num_iteration,
-                                                                             estimate_fundamental_matrix,
-                                                                             inlier_threshold)
+        best_F, inlier_matches_with_best_F, avg_geo_dis_with_best_F = ransac(
+            all_good_matches, num_iteration, estimate_fundamental_matrix, inlier_threshold
+        )
         if inlier_matches_with_best_F is not None:
             print(f"num_iterations: {num_iteration}; avg_geo_dis_with_best_F: {avg_geo_dis_with_best_F};")
             visualize_inliers(img1, img2, inlier_matches_with_best_F)
 
     all_good_matches = np.load('../assets/all_good_matches.npy')
-    F_Q2 = None  # link to your estimated F in Q3
-    F_Q3 = None  # link to your estimated F in Q3
+    F_Q2 = F_without_normalization  # link to your estimated F in Q3
+    F_Q3 = inlier_matches_with_best_F  # link to your estimated F in Q3
     visualize(F_Q2, img1, img2, all_good_matches[:, :2], all_good_matches[:, 2:])
     visualize(F_Q3, img1, img2, all_good_matches[:, :2], all_good_matches[:, 2:])

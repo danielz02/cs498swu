@@ -26,12 +26,14 @@ This link also gives a thorough review of epipolar geometry:
     https://web.stanford.edu/class/cs231a/course_notes/03-epipolar-geometry.pdf
 """
 
-import os
 import cv2  # our tested version is 4.5.5
-import open3d as o3d
 import numpy as np
-from matplotlib import pyplot as plt
 from pathlib import Path
+from matplotlib import rcParams
+from matplotlib import pyplot as plt
+
+rcParams["savefig.dpi"] = 600
+rcParams["savefig.pad_inches"] = 0
 
 
 # --------------------- Question 2 --------------------
@@ -153,13 +155,12 @@ def ransac(all_matches, max_iterations, estimate_fundamental, threshold):
         inliers = all_matches[consensus_set][dists < threshold]
 
         # update the current best solution
-
-        if len(inliers) > len(inlier_matches_with_best_f):
-            avg_geo_dis_with_best_f = calculate_geometric_distance(inliers, f)
+        avg_geo_dis = calculate_geometric_distance(all_matches, f)
+        if len(inliers) > len(inlier_matches_with_best_f) and avg_geo_dis < avg_geo_dis_with_best_f:
+            avg_geo_dis_with_best_f = avg_geo_dis
             inlier_matches_with_best_f = inliers.copy()
             best_f = f.copy()
 
-    # avg_geo_dis_with_best_f = calculate_geometric_distance(all_matches, best_f)
     # --------------------------- End your code here   ---------------------------------------------
     return best_f, inlier_matches_with_best_f, avg_geo_dis_with_best_f
 
@@ -191,10 +192,10 @@ def visualize(f, im1, im2, m1, m2):
     _, ax = plt.subplots(ncols=2)
     for i in range(n):
         ax[0].plot(
-            np.array([0, w]), np.array([0, w]) * l_slope[i] + l_intercept[i], color="C0", linewidth=1
+            np.array([0, w]), np.array([0, w]) * l_slope[i] + l_intercept[i], color="C0", linewidth=0.5
         )
         ax[1].plot(
-            np.array([0, w]), np.array([0, w]) * l_prime_slope[i] + l_prime_intercept[i], color="C0", linewidth=1
+            np.array([0, w]), np.array([0, w]) * l_prime_slope[i] + l_prime_intercept[i], color="C0", linewidth=0.5
         )
 
     for i in range(n):

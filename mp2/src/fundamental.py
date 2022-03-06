@@ -175,11 +175,40 @@ def visualize_inliers(im1, im2, inlier_coords):
 
 # --------------------- Question 4
 
-def visualize(f, im1, im2, kp1, kp2):
+def visualize(f, im1, im2, m1, m2):
     # --------------------------- Begin your code here ---------------------------------------------
+    n, *_ = m1.shape
+    h, w, *_ = im1.shape
+    m1 = np.hstack([m1, np.ones(n).reshape(-1, 1)])
+    m2 = np.hstack([m2, np.ones(n).reshape(-1, 1)])
+    l_prime = np.array([f.T @ x for x in m1])
+    l = np.array([f @ x_prime for x_prime in m2])
+
+    l_slope = - l[:, 0] / l[:, 1]
+    l_intercept = - l[:, 2] / l[:, 1]
+    l_prime_slope = - l_prime[:, 0] / l_prime[:, 1]
+    l_prime_intercept = - l_prime[:, 2] / l_prime[:, 1]
+
+    _, ax = plt.subplots(ncols=2)
+    for i in range(n):
+        ax[0].plot(
+            np.array([0, w]), np.array([0, w]) * l_slope[i] + l_intercept[i], color="C0", linewidth=1
+        )
+        ax[1].plot(
+            np.array([0, w]), np.array([0, w]) * l_prime_slope[i] + l_prime_intercept[i], color="C0", linewidth=1
+        )
+
+    for i in range(n):
+        ax[0].add_patch(plt.Circle(m1[i][:2], radius=10, color="red"))
+        ax[1].add_patch(plt.Circle(m2[i][:2], radius=10, color="red"))
+
+    # ax[0].set_ylim([h, 0])
+    # ax[1].set_ylim([h, 0])
+    ax[0].imshow(im1, cmap="gray")
+    ax[1].imshow(im2, cmap="gray")
+    plt.show()
 
     # --------------------------- End your code here   ---------------------------------------------
-    pass
 
 
 if __name__ == "__main__":
@@ -212,7 +241,7 @@ if __name__ == "__main__":
     )
 
     num_iterations = [1, 100, 10000]
-    inlier_matches_with_best_F = np.eye(3)
+    best_F = np.eye(3)
     inlier_threshold = 0.6  # TODO: change the inlier threshold by yourself
     for num_iteration in num_iterations:
         best_F, inlier_matches_with_best_F, avg_geo_dis_with_best_F = ransac(
@@ -224,6 +253,6 @@ if __name__ == "__main__":
 
     all_good_matches = np.load('../assets/all_good_matches.npy')
     F_Q2 = F_without_normalization  # link to your estimated F in Q3
-    F_Q3 = inlier_matches_with_best_F  # link to your estimated F in Q3
-    visualize(F_Q2, img1, img2, all_good_matches[:, :2], all_good_matches[:, 2:])
-    visualize(F_Q3, img1, img2, all_good_matches[:, :2], all_good_matches[:, 2:])
+    F_Q3 = best_F  # link to your estimated F in Q3
+    visualize(F_Q2, img2, img1, all_good_matches[:, 2:], all_good_matches[:, :2])
+    visualize(F_Q3, img2, img1, all_good_matches[:, 2:], all_good_matches[:, :2])

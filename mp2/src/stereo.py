@@ -2,8 +2,10 @@ import numpy as np
 import open3d as o3d
 import matplotlib.pyplot as plt
 import cv2
+from numba import njit
 
 
+@njit()
 def stereo_matching_ssd(left_im, right_im, max_disp=128, block_size=7):
     """
     Using sum of square difference to compute stereo matching.
@@ -16,7 +18,27 @@ def stereo_matching_ssd(left_im, right_im, max_disp=128, block_size=7):
         disp_im: disparity image (h x w numpy array), storing the disparity values
   """
     # --------------------------- Begin your code here ---------------------------------------------
+    assert left_im.shape == right_im.shape
+    im_h, im_w, _ = left_im.shape
+
+    block_half = block_size // 2
     disp_map = np.zeros_like(left_im[:, :, 0])
+    # We need to slide horizontally
+    for y in range(im_h):
+        for x in range(im_w):
+            best_ssd = np.inf
+            best_disp = np.inf
+            for offset in range(max_disp):
+                y_lower, y_upper = max(y - block_half, 0),  min(y + block_half, im_h)
+                left_patch = left_im[y_lower:y_upper, max(x - block_half, 0):min(x + block_half, im_w), :]
+                right_patch = right_im[y_lower:y_upper, max(x - block_half - offset, 0):min(x + block_half - offset, im_w), :]
+                if left_patch.shape != right_patch.shape:
+                    continue
+                ssd = np.sum((left_patch - right_patch) ** 2)
+                if ssd < best_ssd:
+                    best_ssd = ssd
+                    best_disp = offset
+            disp_map[y, x] = best_disp * (255 / max_disp)
 
     # --------------------------- End your code here   ---------------------------------------------
     return disp_map
@@ -50,8 +72,8 @@ if __name__ == "__main__":
     # Q6.a: How does intrinsic change before and after the scaling? You only need to modify K1 and K2 here,
     # if necessary. If you think they remain the same, leave here as blank and explain why.
     # --------------------------- Begin your code here ---------------------------------------------
-    K1[:2, -1] /= scale
-    K2[:2, -1] /= scale
+    K1 /= scale
+    K2 /= scale
     # --------------------------- End your code here   ---------------------------------------------
 
     # Compute the relative pose between two cameras
@@ -93,6 +115,9 @@ if __name__ == "__main__":
     left_gray = cv2.cvtColor(left_img, cv2.COLOR_BGR2GRAY)
     right_gray = cv2.cvtColor(right_img, cv2.COLOR_BGR2GRAY)
     plt.imshow(np.concatenate((left_gray, right_gray), axis=1), 'gray')
+    plt.title("Gray Scale Images")
+    plt.show()
+
     stereo = cv2.StereoBM_create(numDisparities=128, blockSize=7)
     disparity_cv2 = stereo.compute(left_gray, right_gray) / 16.0
     plt.imshow(np.concatenate((disparity, disparity_cv2), axis=1))
@@ -103,18 +128,31 @@ if __name__ == "__main__":
     # Q6 Bonus:
 
     # --------------------------- Begin your code here ---------------------------------------------
-    xyz = None
-    color = None
-    # --------------------------- End your code here   ---------------------------------------------
-
     # Hints:
     # What is the focal length? How large is the stereo baseline?
+    f = K1[0, 0]
+    baseline = np.linalg.norm(T1 - T2)
     # Convert disparity to depth
+    depth = f * baseline / (disparity + 1e-6)
     # Unproject image color and depth map to 3D point cloud
+    # q = np.array([
+    #     [1, 0, 0, - 0.5 * w],
+    #     [0, -1, 0, 0.5 * h],
+    #     [0, 0, 0, - f],
+    #     [0, 0, -1 / baseline, 0]
+    # ])
+    # xyz = cv2.reprojectImageTo3D(disparity_cv2, q)
+    # color = cv2.cvtColor(left_img, cv2.COLOR_BGR2RGB)
+    depth = o3d.geometry.Image(np.clip(depth, 0, 255).astype(np.uint8))
+    left_img = o3d.geometry.Image(left_img)
+    rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(color=left_img, depth=depth)
+    intrinsic_o3d = o3d.camera.PinholeCameraIntrinsic(
+        width=w, height=h, fx=K1[0][0], fy=K1[1][1], cx=K1[0][2], cy=K1[1][2]
+    )
+    pcd = o3d.geometry.PointCloud.create_from_rgbd_image(
+        image=rgbd, intrinsic=intrinsic_o3d, extrinsic=T1, project_valid_depth_only=True
+    )
     # You can use Open3D to visualize the colored point cloud
+    # --------------------------- End your code here   ---------------------------------------------
 
-    if xyz is not None:
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(xyz)
-        pcd.colors = o3d.utility.Vector3dVector(color)
-        o3d.visualization.draw_geometries([pcd])
+    o3d.visualization.draw_geometries([pcd])

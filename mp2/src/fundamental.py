@@ -31,12 +31,10 @@ import cv2  # our tested version is 4.5.5
 import open3d as o3d
 import numpy as np
 from matplotlib import pyplot as plt
-from math import sqrt
-import random
 from pathlib import Path
 
 
-# --------------------- Question 2
+# --------------------- Question 2 --------------------
 
 def calculate_geometric_distance(all_matches, F):
     """
@@ -121,8 +119,7 @@ def estimate_fundamental_matrix(matches, normalize=False):
     return f
 
 
-# --------------------- Question 3
-
+# --------------------- Question 3 ---------------------
 def ransac(all_matches, max_iterations, estimate_fundamental, threshold):
     """
     Arguments:
@@ -144,23 +141,25 @@ def ransac(all_matches, max_iterations, estimate_fundamental, threshold):
 
     for _ in range(max_iterations):
         # random sample correspondences
-        random_matches = all_matches[np.random.choice(range(len(all_matches)), size=8, replace=False)]
+        random_idx = np.random.choice(range(len(all_matches)), size=8, replace=False)
+        consensus_set = np.setdiff1d(list(range(len(all_matches))), random_idx)
+        random_matches = all_matches[random_idx]
 
         # estimate the minimal fundamental estimation problem
         f = estimate_fundamental(random_matches, normalize=True)
 
         # compute # of inliers
-        dists = np.array([calculate_geometric_distance(match.reshape(1, -1), f) for match in random_matches])
-        inliers = random_matches[dists < threshold]
-        avg_geo_dis = dists[dists < threshold].mean()
+        dists = np.array([calculate_geometric_distance(all_matches[idx].reshape(1, -1), f) for idx in consensus_set])
+        inliers = all_matches[consensus_set][dists < threshold]
 
         # update the current best solution
 
-        if avg_geo_dis < avg_geo_dis_with_best_f:
-            avg_geo_dis_with_best_f = avg_geo_dis
+        if len(inliers) > len(inlier_matches_with_best_f):
+            avg_geo_dis_with_best_f = calculate_geometric_distance(inliers, f)
             inlier_matches_with_best_f = inliers.copy()
             best_f = f.copy()
 
+    # avg_geo_dis_with_best_f = calculate_geometric_distance(all_matches, best_f)
     # --------------------------- End your code here   ---------------------------------------------
     return best_f, inlier_matches_with_best_f, avg_geo_dis_with_best_f
 
@@ -199,11 +198,9 @@ def visualize(f, im1, im2, m1, m2):
         )
 
     for i in range(n):
-        ax[0].add_patch(plt.Circle(m1[i][:2], radius=10, color="red"))
-        ax[1].add_patch(plt.Circle(m2[i][:2], radius=10, color="red"))
+        ax[0].add_patch(plt.Circle(m1[i][:2], radius=10, color="red", zorder=10))
+        ax[1].add_patch(plt.Circle(m2[i][:2], radius=10, color="red", zorder=10))
 
-    # ax[0].set_ylim([h, 0])
-    # ax[1].set_ylim([h, 0])
     ax[0].imshow(im1, cmap="gray")
     ax[1].imshow(im2, cmap="gray")
     plt.show()
@@ -212,6 +209,8 @@ def visualize(f, im1, im2, m1, m2):
 
 
 if __name__ == "__main__":
+    np.random.seed(233)
+
     basedir = Path('../assets/fountain')
     img1 = cv2.imread(str(basedir / 'images/0000.png'), 0)
     img2 = cv2.imread(str(basedir / 'images/0005.png'), 0)
@@ -241,18 +240,20 @@ if __name__ == "__main__":
     )
 
     num_iterations = [1, 100, 10000]
-    best_F = np.eye(3)
-    inlier_threshold = 0.6  # TODO: change the inlier threshold by yourself
+    best_Fs = []
+    inlier_threshold = 0.5  # TODO: change the inlier threshold by yourself
     for num_iteration in num_iterations:
         best_F, inlier_matches_with_best_F, avg_geo_dis_with_best_F = ransac(
             all_good_matches, num_iteration, estimate_fundamental_matrix, inlier_threshold
         )
+        best_Fs.append(best_F.copy())
         if inlier_matches_with_best_F is not None:
             print(f"num_iterations: {num_iteration}; avg_geo_dis_with_best_F: {avg_geo_dis_with_best_F};")
             visualize_inliers(img1, img2, inlier_matches_with_best_F)
 
     all_good_matches = np.load('../assets/all_good_matches.npy')
-    F_Q2 = F_without_normalization  # link to your estimated F in Q3
-    F_Q3 = best_F  # link to your estimated F in Q3
-    visualize(F_Q2, img2, img1, all_good_matches[:, 2:], all_good_matches[:, :2])
-    visualize(F_Q3, img2, img1, all_good_matches[:, 2:], all_good_matches[:, :2])
+    visualize(F_with_normalization, img2, img1, all_good_matches[:, 2:], all_good_matches[:, :2])
+    visualize(F_without_normalization, img2, img1, all_good_matches[:, 2:], all_good_matches[:, :2])
+    visualize(best_Fs[0], img2, img1, all_good_matches[:, 2:], all_good_matches[:, :2])
+    visualize(best_Fs[1], img2, img1, all_good_matches[:, 2:], all_good_matches[:, :2])
+    visualize(best_Fs[2], img2, img1, all_good_matches[:, 2:], all_good_matches[:, :2])

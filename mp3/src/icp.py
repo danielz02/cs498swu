@@ -8,25 +8,46 @@ from sklearn.neighbors import KDTree
 
 
 # Question 4: deal with point_to_plane = True
-def fit_rigid(src, tgt, point_to_plane=False):
+def fit_rigid(src, tgt, tgt_normals=None, point_to_plane=False):
     # Question 2: Rigid Transform Fitting
     # Implement this function
     # -------------------------
-    u, _, v = np.linalg.svd(tgt.T @ src)
-    r = u @ v
-    p_bar = src.mean(axis=0)
-    q_bar = tgt.mean(axis=0)
-    t = q_bar - r @ p_bar
+    if point_to_plane:
+        # Reference: https://www.cs.princeton.edu/~smr/papers/icpstability.pdf
+        assert tgt_normals is not None
+        c = np.cross(src, tgt_normals)
+        cn = np.concatenate([c, tgt_normals], axis=-1)
+        a = (cn[..., np.newaxis] @ cn[:, np.newaxis, :]).sum(axis=0)
+        b = -np.sum(np.sum((src - tgt) * tgt_normals, axis=1).reshape(-1, 1) * cn, axis=0)
+        a_inv = np.linalg.pinv(a)
+        alpha, beta, gamma, tx, ty, tz = a_inv @ b
+        pose = np.array([
+            [1, -gamma, beta, tx],
+            [gamma, 1, -alpha, ty],
+            [-beta, alpha, 1, tz],
+            [0, 0, 0, 1]
+        ])
+    else:
+        u, _, v = np.linalg.svd(tgt.T @ src)
+        r = u @ v
+        p_bar = src.mean(axis=0)
+        q_bar = tgt.mean(axis=0)
+        t = q_bar - r @ p_bar
 
-    pose = np.eye(4)
-    pose[:3, :3] = r
-    pose[:-1, -1] = t
+        pose = np.eye(4)
+        pose[:3, :3] = r
+        pose[:-1, -1] = t
     # -------------------------
     return pose
 
 
 # Question 4: deal with point_to_plane = True
 def icp(src, tgt, init_pose=np.eye(4), max_iter=20, point_to_plane=False):
+    if point_to_plane:
+        tgt_normals = np.asarray(tgt.normals)
+    else:
+        src_normals, tgt_normals = None, None
+
     src = np.vstack([np.asarray(src.points).T, np.ones(len(src.points)).reshape(1, -1)])
     tgt = np.vstack([np.asarray(tgt.points).T, np.ones(len(tgt.points)).reshape(1, -1)])
 
@@ -51,7 +72,8 @@ def icp(src, tgt, init_pose=np.eye(4), max_iter=20, point_to_plane=False):
         dist, idx_closest = kd.query(src_proj[:, :3], k=1, return_distance=True)
         dist = np.array(dist).reshape(-1)
         idx_closest = np.array(idx_closest).reshape(-1)
-        t_new = fit_rigid(src.T[:, :3], tgt.T[idx_closest][:, :3])
+        normals = tgt_normals[idx_closest] if tgt_normals is not None else None
+        t_new = fit_rigid(src.T[:, :3], tgt.T[idx_closest][:, :3], normals, point_to_plane)
         t_delta = t_new - t
         t = t_new.copy()
 
@@ -87,14 +109,17 @@ def rgbd2pts(color, depth, k):
 
 
 # TODO (Shenlong): please check that I set this question up correctly, it is called on line 136
-def pose_error(estimated_pose, gt_pose):
+def pose_error(estimated_pose, gt):
     # Question 5: Translation and Rotation Error
     # Use equations 5-6 in https://cmp.felk.cvut.cz/~hodanto2/data/hodan2016evaluation.pdf
     # Your implementation between the lines
     # ---------------------------
-    error = 0
+    r_hat, r_gt = estimated_pose[:3, :3], gt[:3, :3]
+    t_hat, t_gt = estimated_pose[:-1, -1], gt[:-1, -1]
+    te = np.linalg.norm(t_hat - t_gt)
+    re = np.arccos((np.trace(r_hat @ np.linalg.inv(r_gt)) - 1) / 2)
     # ---------------------------
-    return error
+    return re, te
 
 
 def read_data(ind=0):
@@ -125,7 +150,7 @@ if __name__ == "__main__":
     target.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
 
     # conduct ICP (your code)
-    final_Ts, delta_Ts = icp(source, target)
+    final_Ts, delta_Ts = icp(source, target, max_iter=20, point_to_plane=False)
 
     # visualization
     vis = o3d.visualization.Visualizer()
@@ -155,9 +180,6 @@ if __name__ == "__main__":
     tgt_cam = o3d.geometry.LineSet.create_camera_visualization(w_im, h_im, K, np.eye(4), scale=0.2)
     src_cam = o3d.geometry.LineSet.create_camera_visualization(w_im, h_im, K, np.linalg.inv(T_src) @ T_tgt, scale=0.2)
     pred_cam = o3d.geometry.LineSet.create_camera_visualization(w_im, h_im, K, np.linalg.inv(final_Ts[-1]), scale=0.2)
-
-    vis.run()
-    vis.destroy_window()
 
     gt_pose = np.linalg.inv(T_src) @ T_tgt
     pred_pose = np.linalg.inv(final_Ts[-1])

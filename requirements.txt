@@ -1,4 +1,8 @@
-numpy
-imageio
-matplotlib
-open3d
+numpy~=1.19.2
+imageio~=2.9.0
+matplotlib~=3.5.1
+open3d~=0.15.2
+opencv-python~=4.5.5.62
+numba~=0.54.1
+scipy~=1.6.0
+scikit-learn~=0.24.1

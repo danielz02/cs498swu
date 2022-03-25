@@ -22,6 +22,7 @@ gt_cam = o3d.geometry.LineSet.create_camera_visualization(w, h, K, np.eye(4), sc
 gt_cam.paint_uniform_color((1, 0, 0))
 
 pred_poses = {}
+rel_poses = {}
 gt_poses = {}
 pcds = {}
 pred_poses[0] = np.eye(4)  # assuming first frame is global coordinate center
@@ -42,13 +43,15 @@ for frame in range(step, end, step):
     target.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
 
     # Question 6 --- Could you update the camera poses using ICP? Hint1: you could call your ICP to estimate relative
-    # pose betwen frame t and t-step Hint2: based on the estimated transform between frame t and t-step, are you able
+    # pose between frame t and t-step Hint2: based on the estimated transform between frame t and t-step, are you able
     # to compute world to camera transform for t?
 
     # Your code
     # ------------------------
     T_W2C = np.eye(4)  # world to current camera frame
-
+    t, _ = icp(source, target, init_pose=T_W2C, max_iter=5, point_to_plane=True)
+    T_W2C = t[-1] @ T_W2C
+    rel_poses[frame] = t
     pred_poses[frame] = T_W2C
     # ------------------------
 
@@ -83,9 +86,9 @@ o3d.visualization.draw_geometries(vis_list,
 
 # ------------------------
 
-# Question 8: Pose graph optimization Now we have an simple odometry solution, where each frame's pose in world
+# Question 8: Pose graph optimization Now we have a simple odometry solution, where each frame's pose in world
 # coordinate is decided by its previous frame's pose and a relative transformation provided by ICP. Given the pose
-# T_0 and T_40, please validate whether the relative transformation caculated from the two odometry poses will
+# T_0 and T_40, please validate whether the relative transformation calculated from the two odometry poses will
 # perfectly agree with the transformation we estimated from ICP? If not, explain why. If yes, explain why (in your
 # pdf).
 
@@ -103,11 +106,11 @@ final_Ts, delta_Ts = icp(source_down, target_down, max_iter=50)
 
 T_0 = pred_poses[0]
 T_40 = pred_poses[40]
-print("Relative transfrom from ICP:", np.linalg.inv(final_Ts[-1]))
-print("Relative transfrom from odometry:", T_40)
+print("Relative transform from ICP:", np.linalg.inv(final_Ts[-1]))
+print("Relative transform from odometry:", T_40)
 
 # Question 8: to ensure the consistency, we could build a pose graph to further improve the performance. Each node is
-# the a camera pose Each edge will describe the relative transformation between the node, provided by ICP. The
+# a camera pose. Each edge will describe the relative transformation between the node, provided by ICP. The
 # general idea of pose graph optimization is to jointly optimize the pose such that maximum consensus has been
 # reached: argmin_{T_i} \sum_i^N \sum_{j>i}^{i+K} (T_ij - inv(T_j) @ T_i)^2 where T_ij is transformation from i to j,
 # T_i is transformation from i to world (global coordinate)
@@ -153,3 +156,6 @@ o3d.visualization.draw_geometries(vis_list,
                                   front=[-0.11651295252277051, -0.047982289143896774, -0.99202945108647766],
                                   lookat=[0.023592929264511786, 0.051808635289583765, 1.7903649529102956],
                                   up=[0.097655832648056065, -0.9860023571949631, -0.13513952033284915])
+
+if __name__ == '__main__':
+    pass

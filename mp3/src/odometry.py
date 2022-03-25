@@ -39,8 +39,8 @@ for frame in range(step, end, step):
     # some pre-processing, including computing normals and downsampling
     source_down = source.voxel_down_sample(voxel_size=0.02)
     target_down = target.voxel_down_sample(voxel_size=0.02)
-    source.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
-    target.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+    source_down.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+    target_down.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
 
     # Question 6 --- Could you update the camera poses using ICP? Hint1: you could call your ICP to estimate relative
     # pose between frame t and t-step Hint2: based on the estimated transform between frame t and t-step, are you able
@@ -49,9 +49,16 @@ for frame in range(step, end, step):
     # Your code
     # ------------------------
     T_W2C = np.eye(4)  # world to current camera frame
-    t, _ = icp(source, target, init_pose=T_W2C, max_iter=5, point_to_plane=True)
-    T_W2C = t[-1] @ T_W2C
-    rel_poses[frame] = t
+    # t, _ = icp(source_down, target_down, point_to_plane=True)
+    # T_W2C = t[-1] @ T_W2C
+    # rel_poses[frame] = t
+
+    icp_result = o3d.pipelines.registration.registration_icp(
+        source_down, target_down, 0.02 * 15, np.identity(4),
+        o3d.pipelines.registration.TransformationEstimationPointToPlane()
+    )
+    T_W2C = icp_result.transformation @ T_W2C
+    rel_poses[frame] = icp_result.transformation
     pred_poses[frame] = T_W2C
     # ------------------------
 
@@ -116,7 +123,7 @@ print("Relative transform from odometry:", T_40)
 # T_i is transformation from i to world (global coordinate)
 
 # In this question, you are going to leverage pose graph optimization to build dense pose graph.
-# A node will be connected if their difference in frame number is smaller or equal to 30
+# A pair of nodes will be connected if their difference in frame number is smaller or equal to 30
 # Open3D provided us some helpful function
 # 0. Building pose graph pose_graph = o3d.pipelines.registration.PoseGraph()
 # 1. Add one graph node: o3d.pipelines.registration.PoseGraphNode(init)
@@ -129,8 +136,47 @@ print("Relative transform from odometry:", T_40)
 
 # Your code
 # ------------------------
-pose_graph = o3d.pipelines.registration.PoseGraph()
 frame_list = list(pred_poses.keys())
+max_correspondence_distance_coarse = 0.02 * 1.5
+
+odometry = np.identity(4)
+pose_graph = o3d.pipelines.registration.PoseGraph()
+pose_graph.nodes.append(o3d.pipelines.registration.PoseGraphNode(odometry))
+for i, src_frame in enumerate(frame_list):
+    for j, tgt_frame in enumerate(frame_list):
+        if j <= i:
+            continue
+        source_down = pcds[src_frame]
+        target_down = pcds[tgt_frame]
+        icp_result = o3d.pipelines.registration.registration_icp(
+            source_down, target_down, 0.02 * 15, np.identity(4),
+            o3d.pipelines.registration.TransformationEstimationPointToPlane()
+        )
+        if tgt_frame <= src_frame + 30:
+            # t, _ = icp(source_down, target_down, max_iter=5, point_to_plane=True)
+            # odometry = t[-1] @ odometry
+            print(src_frame, tgt_frame)
+            odometry = np.dot(icp_result.transformation, odometry)
+            pose_graph.nodes.append(
+                o3d.pipelines.registration.PoseGraphNode(np.linalg.inv(odometry))
+            )
+            pose_graph.edges.append(
+                o3d.pipelines.registration.PoseGraphEdge(
+                    src_frame, tgt_frame, icp_result.transformation  # , uncertain=False
+                )
+            )
+
+option = o3d.pipelines.registration.GlobalOptimizationOption(
+    max_correspondence_distance=max_correspondence_distance_coarse,
+    edge_prune_threshold=0.25,
+    reference_node=0
+)
+with o3d.utility.VerbosityContextManager(o3d.utility.VerbosityLevel.Debug) as cm:
+    o3d.pipelines.registration.global_optimization(
+        pose_graph, o3d.pipelines.registration.GlobalOptimizationLevenbergMarquardt(),
+        o3d.pipelines.registration.GlobalOptimizationConvergenceCriteria(),
+        option
+    )
 
 # ------------------------
 

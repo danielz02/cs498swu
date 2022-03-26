@@ -28,15 +28,18 @@ def fit_rigid(src, tgt, tgt_normals=None, point_to_plane=False):
             [0, 0, 0, 1]
         ])
     else:
-        u, _, v = np.linalg.svd(tgt.T @ src)
-        r = u @ v
         p_bar = src.mean(axis=0)
         q_bar = tgt.mean(axis=0)
+
+        u, _, vh = np.linalg.svd((tgt - q_bar).T @ (src - p_bar))
+        r = u @ vh
+
         t = q_bar - r @ p_bar
 
         pose = np.eye(4)
         pose[:3, :3] = r
         pose[:-1, -1] = t
+
     # -------------------------
     return pose
 
@@ -48,8 +51,8 @@ def icp(src, tgt, init_pose=np.eye(4), max_iter=20, point_to_plane=False):
     else:
         src_normals, tgt_normals = None, None
 
-    src = np.vstack([np.asarray(src.points).T, np.ones(len(src.points)).reshape(1, -1)])
-    tgt = np.vstack([np.asarray(tgt.points).T, np.ones(len(tgt.points)).reshape(1, -1)])
+    src = np.asarray(src.points)
+    tgt = np.asarray(tgt.points)
 
     # Question 3: ICP
     # Hint 1: using KDTree for fast nearest neighbour
@@ -65,28 +68,25 @@ def icp(src, tgt, init_pose=np.eye(4), max_iter=20, point_to_plane=False):
 
     for k in range(max_iter):
         # ---------------------------------------------------
-
-        src_proj = src.T @ t  # (n, 4) @ (4, 4) -> (n, 4)
-        src_proj /= src_proj[:, -1].reshape(-1, 1)
-        kd = KDTree(tgt.T[:, :3])
-        dist, idx_closest = kd.query(src_proj[:, :3], k=1, return_distance=True)
+        src_proj = (t[:3, :3] @ src.T).T + t[:3, -1].reshape(-1, 3)
+        kd = KDTree(tgt)
+        dist, idx_closest = kd.query(src_proj, k=1, return_distance=True)
         dist = np.array(dist).reshape(-1)
         idx_closest = np.array(idx_closest).reshape(-1)
         normals = tgt_normals[idx_closest] if tgt_normals is not None else None
-        t_new = fit_rigid(src.T[:, :3], tgt.T[idx_closest][:, :3], normals, point_to_plane)
-        t_delta = t_new - t
-        t = t_new.copy()
-
-        inlier_ratio = (dist <= 5e-3).mean()
-
-        if inlier_ratio > 0.999:
-            break
+        t_delta = fit_rigid(src_proj, tgt[idx_closest], normals, point_to_plane)
+        t = t_delta @ t
 
         print("iter %d: inlier ratio: %.2f" % (k + 1, inlier_ratio))
         # relative update from each iteration
         delta_ts.append(t_delta.copy())
         # pose estimation after each iteration
         transforms.append(t.copy())
+
+        inlier_ratio = (dist < 0.1).mean()
+        if inlier_ratio > 0.999:
+            break
+
     return transforms, delta_ts
 
 
@@ -94,12 +94,13 @@ def rgbd2pts(color, depth, k):
     # Question 1: unproject rgbd to color point cloud, provide visualization in your document
     # Your implementation between the lines
     # ---------------------------
-    h, w, c = color.shape
+
+    h, w = depth.shape
     n = h * w
     depth = depth.reshape(1, -1)  # (1, n)
-    color = color.reshape(-1, c)
-    coords = np.vstack([np.mgrid[0:h, 0:w].reshape(2, -1), np.ones(n).reshape(1, -1)])  # (2, n)
-    xyz = depth * (np.linalg.inv(k) @ coords)  # (1, n) * (3, 3) @ (3, n)
+    color = color.reshape(-1, 3)
+    coords = np.vstack([np.stack(np.meshgrid(range(w), range(h)), axis=0).reshape(2, -1), np.ones(n).reshape(1, -1)])
+    xyz = (np.linalg.inv(k) @ coords) * depth  # (1, n) * (3, 3) @ (3, n)
     # ---------------------------
 
     pcd = o3d.geometry.PointCloud()
@@ -123,14 +124,14 @@ def pose_error(estimated_pose, gt):
 
 
 def read_data(ind=0):
-    K = np.loadtxt("../data/camera-intrinsics.txt", delimiter=' ')
-    depth_im = cv2.imread("../data/frame-%06d.depth.png" % (ind), -1).astype(float)
-    depth_im /= 1000.  # depth is saved in 16-bit PNG in millimeters
-    depth_im[depth_im == 65.535] = 0  # set invalid depth to 0 (specific to 7-scenes dataset)
-    T = np.loadtxt("../data/frame-%06d.pose.txt" % (ind))  # 4x4 rigid transformation matrix
-    color_im = cv2.imread("../data/frame-%06d.color.jpg" % (ind), -1)
-    color_im = cv2.cvtColor(color_im, cv2.COLOR_BGR2RGB) / 255.0
-    return color_im, depth_im, K, T
+    k = np.loadtxt("../data/camera-intrinsics.txt", delimiter=' ')
+    depth_img = cv2.imread("../data/frame-%06d.depth.png" % ind, -1).astype(float)
+    depth_img /= 1000.  # depth is saved in 16-bit PNG in millimeters
+    depth_img[depth_img == 65.535] = 0  # set invalid depth to 0 (specific to 7-scenes dataset)
+    t = np.loadtxt("../data/frame-%06d.pose.txt" % ind)  # 4x4 rigid transformation matrix
+    color_img = cv2.imread("../data/frame-%06d.color.jpg" % ind, -1)
+    color_img = cv2.cvtColor(color_img, cv2.COLOR_BGR2RGB) / 255.0
+    return color_img, depth_img, k, t
 
 
 if __name__ == "__main__":
@@ -150,7 +151,7 @@ if __name__ == "__main__":
     target.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
 
     # conduct ICP (your code)
-    final_Ts, delta_Ts = icp(source, target, max_iter=20, point_to_plane=False)
+    final_Ts, delta_Ts = icp(source, target)
 
     # visualization
     vis = o3d.visualization.Visualizer()

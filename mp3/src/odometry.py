@@ -137,11 +137,14 @@ print("Relative transform from odometry:", T_40)
 # Your code
 # ------------------------
 frame_list = list(pred_poses.keys())
-max_correspondence_distance_coarse = 0.02 * 1.5
+max_correspondence_distance_fine = 0.02 * 1.5
+max_correspondence_distance_coarse = 0.02 * 15
 
-odometry = np.identity(4)
+pred_poses_2 = dict()
+pred_poses_2[0] = np.identity(4)
+
 pose_graph = o3d.pipelines.registration.PoseGraph()
-pose_graph.nodes.append(o3d.pipelines.registration.PoseGraphNode(odometry))
+pose_graph.nodes.append(o3d.pipelines.registration.PoseGraphNode(pred_poses_2[0]))
 for i, src_frame in enumerate(frame_list):
     for j, tgt_frame in enumerate(frame_list):
         if j <= i:
@@ -149,22 +152,17 @@ for i, src_frame in enumerate(frame_list):
         source_down = pcds[src_frame]
         target_down = pcds[tgt_frame]
         icp_result = o3d.pipelines.registration.registration_icp(
-            source_down, target_down, 0.02 * 15, np.identity(4),
+            source_down, target_down, max_correspondence_distance_coarse, np.identity(4),
             o3d.pipelines.registration.TransformationEstimationPointToPlane()
-        )
+        ).transformation
+
         if tgt_frame <= src_frame + 30:
-            # t, _ = icp(source_down, target_down, max_iter=5, point_to_plane=True)
-            # odometry = t[-1] @ odometry
-            print(src_frame, tgt_frame)
-            odometry = np.dot(icp_result.transformation, odometry)
-            pose_graph.nodes.append(
-                o3d.pipelines.registration.PoseGraphNode(np.linalg.inv(odometry))
-            )
-            pose_graph.edges.append(
-                o3d.pipelines.registration.PoseGraphEdge(
-                    src_frame, tgt_frame, icp_result.transformation  # , uncertain=False
-                )
-            )
+            odometry = icp_result @ pred_poses_2[src_frame]
+            if tgt_frame not in pred_poses_2:
+                pred_poses_2[tgt_frame] = odometry
+                pose_graph.nodes.append(o3d.pipelines.registration.PoseGraphNode(np.linalg.inv(odometry)))
+
+            pose_graph.edges.append(o3d.pipelines.registration.PoseGraphEdge(i, j, icp_result))
 
 option = o3d.pipelines.registration.GlobalOptimizationOption(
     max_correspondence_distance=max_correspondence_distance_coarse,

@@ -1,10 +1,10 @@
 from re import I
 import numpy as np
 import open3d as o3d
-from icp import read_data, icp, rgbd2pts
+from icp import read_data, icp, rgbd2pts, pose_error
 
 
-def odometry_error(T_W2Cs_pred, T_W2Cs_gt):
+def odometry_error(w_w2c_pred, t_w2cs_gt):
     rot_err = 0
     trans_err = 0
     return rot_err, trans_err
@@ -24,7 +24,8 @@ gt_cam.paint_uniform_color((1, 0, 0))
 pred_poses = {}
 rel_poses = {}
 gt_poses = {}
-pcds = {}
+pcds = dict()
+T_W2C = np.eye(4)
 pred_poses[0] = np.eye(4)  # assuming first frame is global coordinate center
 gt_poses[0] = np.eye(4)  # assuming first frame is global coordinate center
 pcds[0] = pcd_down  # save point cloud for init frame
@@ -48,18 +49,12 @@ for frame in range(step, end, step):
 
     # Your code
     # ------------------------
-    T_W2C = np.eye(4)  # world to current camera frame
-    # t, _ = icp(source_down, target_down, point_to_plane=True)
-    # T_W2C = t[-1] @ T_W2C
-    # rel_poses[frame] = t
-
-    icp_result = o3d.pipelines.registration.registration_icp(
-        source_down, target_down, 0.02 * 15, np.identity(4),
-        o3d.pipelines.registration.TransformationEstimationPointToPlane()
-    )
-    T_W2C = icp_result.transformation @ T_W2C
-    rel_poses[frame] = icp_result.transformation
+    t, _ = icp(target_down, source_down, point_to_plane=True)
+    T_W2C = t[-1] @ T_W2C  # world to current camera frame
+    rel_poses[frame] = t[-1]  # frame - step -> frame
     pred_poses[frame] = T_W2C
+
+    print(f"Target: {frame - step} | Source: {frame}")
     # ------------------------
 
     # get ground-truth pose
@@ -74,7 +69,7 @@ for frame in range(step, end, step):
     vis_list.append(source)
     vis_list.append(current_cam)
     vis_list.append(gt_cam)
-    print("Frame %d is done" % frame)
+    print(f"Frame {frame} is done")
 
 o3d.visualization.draw_geometries(vis_list,
                                   zoom=0.422,
@@ -90,6 +85,17 @@ o3d.visualization.draw_geometries(vis_list,
 
 # Your code
 # ------------------------
+re, te = 0, 0
+frame_list = sorted(pred_poses.keys())
+for i, src_frame in enumerate(frame_list[1:-1]):
+    rel_pred_pose = rel_poses[src_frame]
+    rel_gt_pose = np.linalg.inv(gt_poses[src_frame]) @ gt_poses[src_frame + step]
+    rot_err, trans_err = pose_error(rel_pred_pose, rel_gt_pose)
+    re += rot_err
+    te += trans_err
+re /= (len(frame_list) - 2)
+te /= (len(frame_list) - 2)
+print("Rotation/Translation Error", re, te)
 
 # ------------------------
 
@@ -136,7 +142,6 @@ print("Relative transform from odometry:", T_40)
 
 # Your code
 # ------------------------
-frame_list = list(pred_poses.keys())
 max_correspondence_distance_fine = 0.02 * 1.5
 max_correspondence_distance_coarse = 0.02 * 15
 
@@ -151,10 +156,8 @@ for i, src_frame in enumerate(frame_list):
             continue
         source_down = pcds[src_frame]
         target_down = pcds[tgt_frame]
-        icp_result = o3d.pipelines.registration.registration_icp(
-            source_down, target_down, max_correspondence_distance_coarse, np.identity(4),
-            o3d.pipelines.registration.TransformationEstimationPointToPlane()
-        ).transformation
+        t, _ = icp(source_down, target_down, point_to_plane=True)
+        icp_result = t[-1]
 
         if tgt_frame <= src_frame + 30:
             odometry = icp_result @ pred_poses_2[src_frame]
@@ -185,11 +188,11 @@ for point_id in range(len(pcds)):
     pcds[point_frame].transform(pose_graph.nodes[point_id].pose)
     T_C2W = pose_graph.nodes[point_id].pose
     pgo_cam = o3d.geometry.LineSet.create_camera_visualization(w, h, K, np.linalg.inv(T_C2W), scale=0.1)
-    pgo_cam.paint_uniform_color((0, 1, 0))
+    pgo_cam.paint_uniform_color((0, 1, 0))  # Green -> PoseGraph
     gt_cam = o3d.geometry.LineSet.create_camera_visualization(w, h, K, gt_poses[point_frame], scale=0.1)
-    gt_cam.paint_uniform_color((1, 0, 0))
+    gt_cam.paint_uniform_color((1, 0, 0))  # Red -> GT
     odometry_cam = o3d.geometry.LineSet.create_camera_visualization(w, h, K, pred_poses[point_frame], scale=0.1)
-    odometry_cam.paint_uniform_color((0, 0, 1))
+    odometry_cam.paint_uniform_color((0, 0, 1))  # Blue -> Q6
     vis_list.append(pgo_cam)
     vis_list.append(odometry_cam)
     vis_list.append(gt_cam)

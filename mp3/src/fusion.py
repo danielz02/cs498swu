@@ -1,12 +1,8 @@
 import argparse
-import os
-
-import cv2
-import volume
 import numpy as np
 import open3d as o3d
-from icp import read_data, rgbd2pts
-from volume import TSDFVolume
+from glob import glob
+from icp import read_data
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -48,59 +44,76 @@ if __name__ == "__main__":
 
         res = 8
         depth_max = 3.0
-        depth_scale = 1
-        voxel_size = 4.0 / 512
+        depth_scale = 1000
+        voxel_size = 3.0 / 512
         trunc = voxel_size * 4
         device = o3d.core.Device("cpu:0")
+
+        depth_img = sorted(glob("../data/*.depth.png"))
+        color_img = sorted(glob("../data/*.color.jpg"))
+        intrinsic = o3d.core.Tensor(np.loadtxt("../data/camera-intrinsics.txt", delimiter=' '))
+        t_init = np.loadtxt("../data/frame-000000.pose.txt")
+        extrinsics = [np.linalg.inv(np.loadtxt("../data/frame-%06d.pose.txt" % ind)) @ t_init for ind in range(100)]
 
         vbg = o3d.t.geometry.VoxelBlockGrid(
             attr_names=('tsdf', 'weight', 'color'),
             attr_dtypes=(o3d.core.float32, o3d.core.float32, o3d.core.float32),
             attr_channels=(1, 1, 3),
             voxel_size=voxel_size,
-            block_resolution=16,
-            block_count=50000, device=device
+            block_resolution=8,
+            block_count=100000, device=device
         )
 
-        color_im, depth_im, K, T_init = read_data(0)
-        for i in range(step, n_imgs, step):
+        for i in range(0, n_imgs, step):
             print(f"Fusing frame {(i + 1)} / {n_imgs}")
 
-            color_im, depth_im, K, T_src = read_data(i)
-            color_im = o3d.t.geometry.Image(color_im)
-            depth_im = o3d.t.geometry.Image(depth_im.astype(np.float32))
+            depth = o3d.t.io.read_image(depth_img[i]).to(device)
+            extrinsic = o3d.core.Tensor(extrinsics[i])
 
-            K = o3d.core.Tensor(K)
-            extrinsic = o3d.core.Tensor(np.linalg.inv(T_src) @ T_init)
+            # Get active frustum block coordinates from input
             frustum_block_coords = vbg.compute_unique_block_coordinates(
-                depth_im, K, extrinsic, depth_scale=depth_scale, depth_max=depth_max
+                depth, intrinsic, extrinsic, depth_scale, depth_max
             )
+            # Activate them in the underlying hash map (may have been inserted)
+            vbg.hashmap().activate(frustum_block_coords)
+
+            # Find buf indices in the underlying engine
             buf_indices, masks = vbg.hashmap().find(frustum_block_coords)
+            o3d.core.cuda.synchronize()
+
             voxel_coords, voxel_indices = vbg.voxel_coordinates_and_flattened_indices(buf_indices)
+            o3d.core.cuda.synchronize()
 
-            extrinsic = extrinsic.to(device, o3d.core.float32)
-            K = K.to(device, o3d.core.float32)
-            xyz = extrinsic[:3, :3] @ voxel_coords.T() + extrinsic[:3, 3:]
+            # Now project them to the depth and find association
+            # (3, N) -> (2, N)
+            extrinsic_dev = extrinsic.to(device, o3d.core.float32)
+            xyz = extrinsic_dev[:3, :3] @ voxel_coords.T() + extrinsic_dev[:3, 3:]
 
-            uvd = K @ xyz
+            intrinsic_dev = intrinsic.to(device, o3d.core.float32)
+            uvd = intrinsic_dev @ xyz
             d = uvd[2]
             u = (uvd[0] / d).round().to(o3d.core.int64)
             v = (uvd[1] / d).round().to(o3d.core.int64)
             o3d.core.cuda.synchronize()
 
-            mask_proj = (d > 0) & (u >= 0) & (v >= 0) & (u < depth_im.columns) & (v < depth_im.rows)
+            mask_proj = (d > 0) & (u >= 0) & (v >= 0) & (u < depth.columns) & (
+                    v < depth.rows)
 
             v_proj = v[mask_proj]
             u_proj = u[mask_proj]
             d_proj = d[mask_proj]
-
-            depth_readings = depth_im.as_tensor()[v_proj, u_proj, 0].to(o3d.core.float32) / depth_scale
+            depth_readings = depth.as_tensor()[v_proj, u_proj, 0].to(
+                o3d.core.float32) / depth_scale
             sdf = depth_readings - d_proj
 
-            mask_inlier = (depth_readings > 0) & (depth_readings < depth_max) & (sdf >= -trunc)
+            mask_inlier = (depth_readings > 0) \
+                          & (depth_readings < depth_max) \
+                          & (sdf >= -trunc)
 
             sdf[sdf >= trunc] = trunc
             sdf = sdf / trunc
+            o3d.core.cuda.synchronize()
+
             weight = vbg.attribute('weight').reshape((-1, 1))
             tsdf = vbg.attribute('tsdf').reshape((-1, 1))
 
@@ -110,22 +123,20 @@ if __name__ == "__main__":
 
             tsdf[valid_voxel_indices] \
                 = (tsdf[valid_voxel_indices] * w +
-                   sdf[mask_inlier].reshape(w.shape)) / wp
-            color_readings = color_im.as_tensor()[v_proj, u_proj].to(o3d.core.float32)
+                   sdf[mask_inlier].reshape(w.shape)) / (wp)
+            color = o3d.t.io.read_image(color_img[i]).to(device)
+            color_readings = color.as_tensor()[v_proj,
+                                               u_proj].to(o3d.core.float32)
 
             color = vbg.attribute('color').reshape((-1, 3))
-            color[valid_voxel_indices] = (color[valid_voxel_indices] * w + color_readings[mask_inlier]) / wp
+            color[valid_voxel_indices] \
+                = (color[valid_voxel_indices] * w +
+                   color_readings[mask_inlier]) / (wp)
 
             weight[valid_voxel_indices] = wp
             o3d.core.cuda.synchronize()
 
-        pcd = vbg.extract_point_cloud()
-        mesh = vbg.extract_triangle_mesh()
-
-        # verts, faces, norms, colors = tsdf_vol.get_mesh()
-        # volume.meshwrite("mesh.ply", verts, faces, norms, colors)
-        # mesh = o3d.io.read_triangle_mesh("mesh.ply")
-        # os.remove("mesh.ply")
+        mesh = vbg.extract_triangle_mesh().to_legacy()
 
     mesh.compute_vertex_normals()
     o3d.visualization.draw_geometries(

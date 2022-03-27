@@ -135,16 +135,14 @@ def read_data(ind=0):
 
 
 if __name__ == "__main__":
-
     # pairwise ICP
-
     # read color, image data and the ground-truth, converting to point cloud
     color_im, depth_im, K, T_tgt = read_data(0)
     target = rgbd2pts(color_im, depth_im, K)
     color_im, depth_im, K, T_src = read_data(40)
     source = rgbd2pts(color_im, depth_im, K)
 
-    # downsampling and normal estimatoin
+    # downsampling and normal estimation
     source = source.voxel_down_sample(voxel_size=0.02)
     target = target.voxel_down_sample(voxel_size=0.02)
     source.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))

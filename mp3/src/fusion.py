@@ -47,7 +47,7 @@ if __name__ == "__main__":
         depth_scale = 1000
         voxel_size = 3.0 / 512
         trunc = voxel_size * 4
-        device = o3d.core.Device("cpu:0")
+        device = o3d.core.Device("CUDA:0")
 
         depth_img = sorted(glob("../data/*.depth.png"))
         color_img = sorted(glob("../data/*.color.jpg"))
@@ -84,10 +84,9 @@ if __name__ == "__main__":
             voxel_coords, voxel_indices = vbg.voxel_coordinates_and_flattened_indices(buf_indices)
             o3d.core.cuda.synchronize()
 
-            # Now project them to the depth and find association
-            # (3, N) -> (2, N)
-            extrinsic_dev = extrinsic.to(device, o3d.core.float32)
-            xyz = extrinsic_dev[:3, :3] @ voxel_coords.T() + extrinsic_dev[:3, 3:]
+            # Voxel to frame coordinate
+            extrinsic = extrinsic.to(device, o3d.core.float32)
+            xyz = extrinsic[:3, :3] @ voxel_coords.T() + extrinsic[:3, 3:]
 
             intrinsic_dev = intrinsic.to(device, o3d.core.float32)
             uvd = intrinsic_dev @ xyz
@@ -96,43 +95,43 @@ if __name__ == "__main__":
             v = (uvd[1] / d).round().to(o3d.core.int64)
             o3d.core.cuda.synchronize()
 
-            mask_proj = (d > 0) & (u >= 0) & (v >= 0) & (u < depth.columns) & (
-                    v < depth.rows)
+            # Remove the points that go outside the frame
+            mask_proj = (d > 0) & (u >= 0) & (v >= 0) & (u < depth.columns) & (v < depth.rows)
 
+            # Calculate the SDF for those points
             v_proj = v[mask_proj]
             u_proj = u[mask_proj]
             d_proj = d[mask_proj]
-            depth_readings = depth.as_tensor()[v_proj, u_proj, 0].to(
-                o3d.core.float32) / depth_scale
-            sdf = depth_readings - d_proj
+            depth_readings = depth.as_tensor()[v_proj, u_proj, 0].to(o3d.core.float32) / depth_scale
+            tsdf_new = depth_readings - d_proj
 
-            mask_inlier = (depth_readings > 0) \
-                          & (depth_readings < depth_max) \
-                          & (sdf >= -trunc)
+            # Check inliers based on depth information
+            mask_inlier = (depth_readings > 0) & (depth_readings < depth_max) & (tsdf_new >= -trunc)
 
-            sdf[sdf >= trunc] = trunc
-            sdf = sdf / trunc
+            # Truncate SDF
+            tsdf_new[tsdf_new >= trunc] = trunc
+            tsdf_new = tsdf_new / trunc
             o3d.core.cuda.synchronize()
 
+            # Get old weight and TSDF
             weight = vbg.attribute('weight').reshape((-1, 1))
             tsdf = vbg.attribute('tsdf').reshape((-1, 1))
 
+            # Weight update
             valid_voxel_indices = voxel_indices[mask_proj][mask_inlier]
             w = weight[valid_voxel_indices]
             wp = w + 1
 
-            tsdf[valid_voxel_indices] \
-                = (tsdf[valid_voxel_indices] * w +
-                   sdf[mask_inlier].reshape(w.shape)) / (wp)
+            # TSDF update
+            tsdf[valid_voxel_indices] = (tsdf[valid_voxel_indices] * w + tsdf_new[mask_inlier].reshape(w.shape)) / wp
             color = o3d.t.io.read_image(color_img[i]).to(device)
-            color_readings = color.as_tensor()[v_proj,
-                                               u_proj].to(o3d.core.float32)
+            color_readings = color.as_tensor()[v_proj, u_proj].to(o3d.core.float32)
 
+            # Color information update
             color = vbg.attribute('color').reshape((-1, 3))
-            color[valid_voxel_indices] \
-                = (color[valid_voxel_indices] * w +
-                   color_readings[mask_inlier]) / (wp)
+            color[valid_voxel_indices] = (color[valid_voxel_indices] * w + color_readings[mask_inlier]) / wp
 
+            # Save and synchronize new weights
             weight[valid_voxel_indices] = wp
             o3d.core.cuda.synchronize()
 

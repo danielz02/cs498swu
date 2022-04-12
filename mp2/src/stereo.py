@@ -135,24 +135,32 @@ if __name__ == "__main__":
     # Convert disparity to depth
     depth = f * baseline / (disparity + 1e-6)
     # Unproject image color and depth map to 3D point cloud
-    # q = np.array([
-    #     [1, 0, 0, - 0.5 * w],
-    #     [0, -1, 0, 0.5 * h],
-    #     [0, 0, 0, - f],
-    #     [0, 0, -1 / baseline, 0]
-    # ])
-    # xyz = cv2.reprojectImageTo3D(disparity_cv2, q)
-    # color = cv2.cvtColor(left_img, cv2.COLOR_BGR2RGB)
-    depth = o3d.geometry.Image(np.clip(depth, 0, 255).astype(np.uint8))
-    left_img = o3d.geometry.Image(left_img)
-    rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(color=left_img, depth=depth)
-    intrinsic_o3d = o3d.camera.PinholeCameraIntrinsic(
-        width=w, height=h, fx=K1[0][0], fy=K1[1][1], cx=K1[0][2], cy=K1[1][2]
-    )
-    pcd = o3d.geometry.PointCloud.create_from_rgbd_image(
-        image=rgbd, intrinsic=intrinsic_o3d, extrinsic=T1, project_valid_depth_only=True
-    )
+    cx, cy = K1[:2, -1]
+    cx_prime = K1[0, -1]
+    q = np.array([
+        [1, 0, 0, -cx],
+        [0, 1, 0, -cy],
+        [0, 0, 0, f],
+        [0, 0, -1 / baseline, (cx - cx_prime) / baseline]
+    ])
+    disparity_cv2 = stereo.compute(left_gray, right_gray)
+    xyz = cv2.reprojectImageTo3D(disparity_cv2, q).reshape(-1, 3)
+    xyz = xyz[~np.isinf(xyz).any(axis=1)]
+    color = cv2.cvtColor(left_img, cv2.COLOR_BGR2RGB).reshape(-1, 3)  # / 255
+
+    # depth = o3d.geometry.Image(np.clip(depth, 0, 255).astype(np.uint8))
+    # left_img = o3d.geometry.Image(left_img)
+    # rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(color=left_img, depth=depth)
+    # intrinsic_o3d = o3d.camera.PinholeCameraIntrinsic(
+    #     width=w, height=h, fx=K1[0][0], fy=K1[1][1], cx=K1[0][2], cy=K1[1][2]
+    # )
+    # pcd = o3d.geometry.PointCloud.create_from_rgbd_image(
+    #     image=rgbd, intrinsic=intrinsic_o3d, extrinsic=T1, project_valid_depth_only=True
+    # )
     # You can use Open3D to visualize the colored point cloud
     # --------------------------- End your code here   ---------------------------------------------
 
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(xyz)
+    pcd.colors = o3d.utility.Vector3dVector(color)
     o3d.visualization.draw_geometries([pcd])

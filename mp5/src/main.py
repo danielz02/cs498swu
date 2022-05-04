@@ -4,8 +4,6 @@ from PIL import Image
 import numpy as np
 from matplotlib import cm
 import matplotlib.pyplot as plt
-cmap = cm.jet(np.random.permutation(256))
-
 from utils import orientation_correction, process_dets, \
     get_frame_det, Box3D, load_detection
 from matching import data_association
@@ -13,6 +11,9 @@ from kitti_oxts import ego_motion_compensation, load_oxts
 from kitti_calib import Calibration
 from vis import visualization, vis_image_with_obj, vis_obj
 from kalman_filter import Kalman
+
+cmap = cm.jet(np.random.permutation(256))
+
 
 def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_file, max_age=3, algm="greedy"):
     # Don't need to initialize trackers, first iteration will birth new ones
@@ -40,7 +41,7 @@ def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_f
         trks_bbox = []
         for t in range(len(trackers)):
             tmp_tracker = trackers[t]
-            tmp_tracker.predict() # Your implementation
+            tmp_tracker.predict()  # Your implementation
 
             # Why do we have this? 
             #   Imagine a tracker gets occluded for a few frames. 
@@ -59,10 +60,10 @@ def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_f
         #       This makes the problem of tracking much harder
         #       We can fix this problem with a simple trick: ego-motion compensation
         #   Ego-motion compensation means we use IMU and camera information to update each tracker's location
-        #       In other words, since we've already propagated each tracker forward, 
+        #       In other words, since we've already propagated each tracker forward,
         #           after this step detections and trackers should be very similar
         # ---------------
-        if (frame > 0):
+        if frame > 0:
             # Note this will also update the state in each tracker, not just trks_bbox
             trks_bbox = ego_motion_compensation(frame, trks_bbox, trackers, oxts, calib)
             # To use this code below define img as we do in the visualization section
@@ -88,11 +89,11 @@ def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_f
         # ---------------
         for t, trk in enumerate(trackers):
             if t not in unmatched_trks:
-                d = matched[np.where(matched[:, 1] == t)[0], 0] # a list of single index
+                d = matched[np.where(matched[:, 1] == t)[0], 0]  # a list of single index
                 assert len(d) == 1, 'error'
 
                 # update statistics
-                trk.time_since_update = 0 # reset because just updated
+                trk.time_since_update = 0  # reset because just updated
                 trk.hits += 1
 
                 # update orientation in propagated tracks and detected boxes so that they are within 90 degree
@@ -100,7 +101,7 @@ def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_f
                 trk.x[3], bbox3d[3] = orientation_correction(trk.x[3], bbox3d[3])
 
                 # kalman filter update with observation
-                trk.update(bbox3d) # Your implementation
+                trk.update(bbox3d)  # Your implementation
 
                 trk.info = info[d, :][0]
         # ---------------
@@ -108,7 +109,7 @@ def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_f
         # 5. Birth
         #     Create and initialise new trackers for unmatched detections
         # ---------------
-        for i in unmatched_dets: # a scalar of index of detection
+        for i in unmatched_dets:  # a scalar of index of detection
             trk = Kalman(Box3D.bbox2array(frame_dets[i]), info[i, :], ID_count)
             trackers.append(trk)
             ID_count += 1
@@ -120,11 +121,11 @@ def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_f
         num_trks = len(trackers)
         for trk in reversed(trackers):
             # change format from [x,y,z,theta,l,w,h] to [h,w,l,x,y,z,theta]
-            d = Box3D.array2bbox(trk.x[:7].reshape((7, )))     # bbox location self
+            d = Box3D.array2bbox(trk.x[:7].reshape((7,)))  # bbox location self
             d = Box3D.bbox2array_raw(d)
             num_trks -= 1
             # remove dead tracker
-            if (trk.time_since_update >= max_age):
+            if trk.time_since_update >= max_age:
                 trackers.pop(num_trks)
         # ---------------
 
@@ -135,7 +136,7 @@ def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_f
         #       the detections
         #       the detections AND matched trackers
         #   The easiest function you should use is vis_obj, its params are:
-        #       bbox3D          - such as each detection, or each tracker (once converted to bbox)
+        #       bbox_3d          - such as each detection, or each tracker (once converted to bbox)
         #       img (np array)  - don't change, use the code we provide below
         #       calib           - don't change
         #       hw              - don't change, (375,1242)
@@ -176,7 +177,7 @@ def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_f
             min_hits = 3
             if trk.hits >= min_hits or frame <= min_hits:
                 # change format from [x,y,z,theta,l,w,h] to [h,w,l,x,y,z,theta]
-                d = Box3D.array2bbox(trk.x[:7].reshape((7, )))
+                d = Box3D.array2bbox(trk.x[:7].reshape((7,)))
                 d = Box3D.bbox2array_raw(d)
 
                 id_tmp = trk.ID
@@ -187,18 +188,25 @@ def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_f
                 score_threshold = 0.5
                 if conf_tmp >= score_threshold:
                     str_to_srite = '%d %d %s 0 0 %f %f %f %f %f %f %f %f %f %f %f %f %f\n' % (frame, id_tmp,
-                        type_tmp, ori_tmp, bbox2d_tmp_trk[0], bbox2d_tmp_trk[1], bbox2d_tmp_trk[2], bbox2d_tmp_trk[3],
-                        d[0], d[1], d[2], d[3], d[4], d[5], d[6], conf_tmp)
+                                                                                              type_tmp, ori_tmp,
+                                                                                              bbox2d_tmp_trk[0],
+                                                                                              bbox2d_tmp_trk[1],
+                                                                                              bbox2d_tmp_trk[2],
+                                                                                              bbox2d_tmp_trk[3],
+                                                                                              d[0], d[1], d[2], d[3],
+                                                                                              d[4], d[5], d[6],
+                                                                                              conf_tmp)
                     eval_file.write(str_to_srite)
         # ---------------
 
         print("\rFrame {:06d} done. Active Trackers {:02d}".format(frame, len(trackers)), end="")
     print()
 
+
 def main():
-    det_root = 'data/detection'
-    oxt_root = 'data/oxts/training'
-    calib_root = 'data/calib/training'
+    det_root = '../data/detection'
+    oxt_root = '../data/oxts/training'
+    calib_root = '../data/calib/training'
     all_sequences = os.listdir(det_root)
     import sys
     if len(sys.argv) == 2:
@@ -218,24 +226,24 @@ def main():
             continue
 
         oxts_path = os.path.join(oxt_root, seq_name)
-        oxts_imu = load_oxts(oxts_path) # seq_frames x 4 x 4
+        oxts_imu = load_oxts(oxts_path)  # seq_frames x 4 x 4
         print("Loaded oxts, shape: {}".format(oxts_imu.shape))
 
         calib_path = os.path.join(calib_root, seq_name)
         calib = Calibration(calib_path)
 
-        vis_path = "results/img_vis/{}/".format(seq_name[:-4])
+        vis_path = "../results/img_vis/{}/".format(seq_name[:-4])
         if not os.path.exists(vis_path):
             os.makedirs(vis_path)
 
-        eval_folder = "results/eval"
+        eval_folder = "../results/eval"
         if not os.path.exists(eval_folder):
             os.makedirs(eval_folder)
-        eval_path = "results/eval/{}".format(seq_name)
+        eval_path = "../results/eval/{}".format(seq_name)
         eval_file = open(eval_path, 'w')
 
         if seq_name == "0000.txt":
-            image_dir = "data/image_02/training/{}".format(seq_name[:-4])
+            image_dir = "../data/image_02/training/{}".format(seq_name[:-4])
         else:
             image_dir = None
 
@@ -249,10 +257,9 @@ def main():
         total_time += seq_total_time
 
         print("Sequence: {}, Time: {:.2f}, Num Frames: {}".format(seq_count, seq_total_time, max_frame))
-        break
 
     print("Total time: {:.2f}".format(total_time))
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()

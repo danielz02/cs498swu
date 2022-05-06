@@ -43,8 +43,10 @@ def draw_box3d_image(image, qs, img_size=(900, 1600), color=(255, 255, 255), thi
     pts_outside = 0
     for index in range(8):
         check = check_outside_image(qs[index, 0], qs[index, 1], img_size[0], img_size[1])
-        if check: pts_outside += 1
-    if pts_outside >= 6: return image, False
+        if check:
+            pts_outside += 1
+    if pts_outside >= 6:
+        return image, False
 
     # actually draw
     if qs is not None:

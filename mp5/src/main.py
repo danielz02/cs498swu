@@ -14,12 +14,18 @@ from kalman_filter import Kalman
 
 cmap = cm.jet(np.random.permutation(256))
 
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+BLUE = (0, 0, 255)
+YELLOW = (255, 255, 0)
+
 
 def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_file, max_age=3, algm="greedy"):
     # Don't need to initialize trackers, first iteration will birth new ones
     # Each tracker in this list is a Kalman Filter, i.e. object of type kalman_filter.Kalman
     trackers = []
     ID_count = 0
+    hw = (375, 1242)
 
     # You can set this to True to see visualization on screen each frame
     viz_on_screen = False
@@ -32,6 +38,21 @@ def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_f
         # frame_dets: N x 7, float numpy array
         frame_dets, info = frame_dets['dets'], frame_dets['info']
         frame_dets = process_dets(frame_dets)
+
+        # Q0
+        if frame == 100:
+            if image_dir is None:
+                img_det = np.zeros((375, 1242, 3), np.uint8)
+            else:
+                img_det = os.path.join(image_dir, "{:06d}.png".format(frame))
+                img_det = np.array(Image.open(img_det))
+            for i, bbox3d in enumerate(frame_dets):
+                str_vis = '{}'.format(i)
+                color = tuple([int(tmp * 255) for tmp in cmap[i % 256][:3]])
+                img_det = vis_obj(bbox3d, img_det, calib, (375, 1242), color, str_vis)
+            img_det = Image.fromarray(img_det)
+            img_det = img_det.resize((1242, 375))
+            img_det.save(os.path.join(vis_dir, f"{frame}-det.jpg"))
 
         # 1. Prediction/Propagation
         #   Here we predict where each tracked object would be according to our dynamics model
@@ -83,6 +104,18 @@ def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_f
         matched, unmatched_dets, unmatched_trks = data_association(frame_dets, trks_bbox, threshold=-0.2, algm=algm)
         # ---------------
 
+        # Q6
+        if image_dir is None:
+            img = np.zeros((375, 1242, 3), np.uint8)
+        else:
+            img = os.path.join(image_dir, "{:06d}.png".format(frame))
+            img = np.array(Image.open(img))
+
+        for det_idx, trk_idx in matched:
+            trk_tmp = Box3D.array2bbox(trackers[trk_idx].x.reshape((-1))[:7])
+            img = vis_obj(trk_tmp, img, calib, hw, BLUE, f"{trackers[trk_idx].ID}-")
+            img = vis_obj(frame_dets[det_idx], img, calib, hw, YELLOW, "")
+
         # 4. Observation Model Update
         #   Now we can do a Kalman Filter update to the trackers with assigned detections
         #   TODO (student): You are tasked with implementing the Kalman Filter method "update(bbox3d)"
@@ -106,6 +139,12 @@ def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_f
                 trk.info = info[d, :][0]
         # ---------------
 
+        # Q6
+        for det_idx, trk_idx in matched:
+            trk_tmp = Box3D.array2bbox(trackers[trk_idx].x.reshape((-1))[:7])
+            img = vis_obj(trk_tmp, img, calib, hw, BLUE, f"{trackers[trk_idx].ID}+")
+            img = vis_obj(frame_dets[det_idx], img, calib, hw, YELLOW, "")
+
         # 5. Birth
         #     Create and initialise new trackers for unmatched detections
         # ---------------
@@ -113,6 +152,8 @@ def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_f
             trk = Kalman(Box3D.bbox2array(frame_dets[i]), info[i, :], ID_count)
             trackers.append(trk)
             ID_count += 1
+
+            img = vis_obj(frame_dets[i], img, calib, hw, GREEN, f"Birth {trk.ID}")  # Q6
         # ---------------
 
         # 6. Death
@@ -127,6 +168,9 @@ def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_f
             # remove dead tracker
             if trk.time_since_update >= max_age:
                 trackers.pop(num_trks)
+
+                trk_tmp = Box3D.array2bbox(trk.x.reshape((-1))[:7])
+                img = vis_obj(trk_tmp, img, calib, hw, RED, f"Death {trk.ID}")  # Q6
         # ---------------
 
         # Visualization
@@ -144,28 +188,15 @@ def track_sequence(seq_dets, num_frames, oxts, calib, vis_dir, image_dir, eval_f
         #       str_vis         - string to put above bbox, for example the tracker ID 
         #   You should modify and move this code around for your debugging purposes
         # ---------------
-        if True:
-            if image_dir is None:
-                img = np.zeros((375, 1242, 3), np.uint8)
-            else:
-                img = os.path.join(image_dir, "{:06d}.png".format(frame))
-                img = np.array(Image.open(img))
 
-            save_path = os.path.join(vis_dir, "{}.jpg".format(frame))
-            hw = (375, 1242)
+        save_path = os.path.join(vis_dir, "{}.jpg".format(frame))
 
-            for trk in trackers:
-                trk_tmp = Box3D.array2bbox(trk.x.reshape((-1))[:7])
-                str_vis = "{}".format(trk.ID)
-                trk_color = tuple([int(tmp * 255) for tmp in cmap[trk.ID % 256][:3]])
-                img = vis_obj(trk_tmp, img, calib, hw, trk_color, str_vis)
-
-            img = Image.fromarray(img)
-            img = img.resize((hw[1], hw[0]))
-            img.save(save_path)
-            if viz_on_screen:
-                plt.imshow(img)
-                plt.pause(0.2)
+        img = Image.fromarray(img)
+        img = img.resize((hw[1], hw[0]))
+        img.save(save_path)
+        if viz_on_screen:
+            plt.imshow(img)
+            plt.pause(0.2)
         # ---------------
 
         # Save Evaluation Data

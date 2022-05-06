@@ -1,8 +1,5 @@
 import numpy as np
-from numpy import dot, zeros, eye, isscalar
-from copy import deepcopy
-from math import log
-import sys
+from numpy import zeros, eye
 
 from utils import within_range
 
@@ -63,9 +60,10 @@ class Kalman:
         # Hint: the initial velocity is very uncertain for new detections
 
         # --------------------------- Begin your code here ---------------------------------------------
-        self.A[list(range(3)), list(reversed(range(-3, 0)))] = 1
+        self.A[list(range(3)), list(range(-3, 0))] = 1
         self.H[:self.dim_z, :self.dim_z] = np.eye(self.dim_z)
-        self.Q[:self.dim_z, :self.dim_z] = 0
+        self.Q = self.Q * 5
+        self.Sigma = self.Sigma * 10
 
         # --------------------------- End your code here   ---------------------------------------------
 
@@ -88,7 +86,6 @@ class Kalman:
 
         # Leave this at the end, within_range ensures that the angle is between -pi and pi
         self.x[3] = within_range(self.x[3])
-        return
 
     # Q2 and Q4.
     # TODO: Your code
@@ -111,9 +108,9 @@ class Kalman:
             self.SI = np.linalg.inv(self.S)
             self.K = sigma_ht @ self.SI
             self.x = self.x + self.K @ self.y
-            # P = (I-KH)P(I-KH)' + KRK'
-            # self.Sigma = self.Sigma - self.K @ self.H @ self.Sigma
-            self.Sigma = (np.eye(self.dim_x) - self.K @ self.H) + self.K @ self.R @ self.K.T
+            self.Sigma = self.Sigma - self.K @ self.H @ self.Sigma
+            # i_minus_kh = (np.eye(self.dim_x) - self.K @ self.H)
+            # self.Sigma = i_minus_kh @ self.Sigma @ i_minus_kh.T + self.K @ self.R @ self.K.T
 
             self.z = z.copy()
 
